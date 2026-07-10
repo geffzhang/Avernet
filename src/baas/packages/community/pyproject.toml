@@ -56,6 +56,7 @@ dev = [
   "basedpyright>=1.39.8",
   "types-pyyaml>=6.0.12.20260508",
   "pytest-cov>=7.1.0",
+  "coverage>=7.6.0",
   "pytest-rerunfailures>=16.3",
   "pytestarch>=4.0.0,<5.0.0",
 ]

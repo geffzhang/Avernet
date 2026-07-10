@@ -37,8 +37,8 @@ log_usage() {
     echo -e "${BLUE}Usage:${NC} $0 {start|stop|restart|status} [options]"
     echo ""
     echo "Commands:"
-    echo "  start              - 启动应用"
-    echo "  stop               - 停止应用"
+    echo "  start              - 启动应用（默认启用覆盖率收集，--debug 禁用）"
+    echo "  stop               - 停止应用（自动合并并输出覆盖率报告）"
     echo "  restart            - 重启应用"
     echo "  status             - 查看应用状态"
     echo ""
@@ -231,12 +231,21 @@ do_start() {
     if [[ -z "$APP_MODE" ]]; then
         APP_MODE="bare"
     fi
+    # 用于持久化覆盖率状态，供 stop 时检测
+    local coverage_marker="$WORK_DIR/tmp/.coverage_enabled"
+
+    # 默认启用覆盖率收集（除非使用 --debug）
+    if [[ -z "$debug_port" ]]; then
+        export SINGLEBOX_COVERAGE=1
+        : "${SINGLEBOX_COVERAGE_DIR:=$WORK_DIR/tmp/coverage}"
+        mkdir -p "$(dirname "$coverage_marker")"
+        : > "$coverage_marker"
+    fi
     start_cmd=("$VENV_DIR/bin/python" src/secbaas/main.py -c "$CONFIG_DIR" --mode "$APP_MODE")
-    if [[ "${SINGLEBOX_COVERAGE:-0}" == "1" && -z "$debug_port" ]]; then
+    if [[ -z "$debug_port" ]]; then
         coverage_dir="${SINGLEBOX_COVERAGE_DIR:-$WORK_DIR/tmp/coverage}/baas"
         mkdir -p "$coverage_dir"
         export COVERAGE_FILE="$coverage_dir/.coverage"
-        uv pip install --python "$VENV_DIR/bin/python" coverage >/dev/null
         start_cmd=(
             "$VENV_DIR/bin/python" -m coverage run
             --parallel-mode
@@ -331,62 +340,90 @@ get_pid_by_port() {
     fi
 }
 
-# 停止应用
 do_stop() {
     local stopped=false
     local stop_port="$APP_PORT"
 
-    # 优先从端口文件读取启动时的端口
+    local coverage_marker="$WORK_DIR/tmp/.coverage_enabled"
+
     if [[ -f "$PORT_FILE" ]]; then
         stop_port=$(cat "$PORT_FILE")
     fi
 
-    # 优先通过 PID 文件停止
     if is_running; then
+        local cov_dir="${SINGLEBOX_COVERAGE_DIR:-$WORK_DIR/tmp/coverage}/baas"
         OLD_PID=$(cat "$PID_FILE")
-        log_info "停止应用 (PID: $OLD_PID)..."
+        log_info "Stopping app (PID: $OLD_PID)..."
 
-        # 发送 SIGTERM 信号
+        if [[ -f "$coverage_marker" ]]; then
+            kill -USR1 "$OLD_PID" 2>/dev/null || true
+            log_info "Coverage data flushed via SIGUSR1"
+            sleep 2
+        fi
+
         kill "$OLD_PID" 2>/dev/null
 
-        # 等待进程结束
         for i in {1..10}; do
             if ! kill -0 "$OLD_PID" 2>/dev/null; then
                 rm -f "$PID_FILE"
-                log_info "应用已停止"
+                log_info "App stopped"
                 stopped=true
                 break
             fi
             sleep 1
         done
 
-        # 强制杀死
         if [[ "$stopped" != "true" ]]; then
-            log_warn "等待超时，强制杀死进程..."
+            log_warn "Timeout waiting, force killing..."
             kill -9 "$OLD_PID" 2>/dev/null
             rm -f "$PID_FILE"
-            log_info "应用已强制停止"
+            log_info "App force stopped"
             stopped=true
         fi
     else
         rm -f "$PID_FILE"
     fi
 
-    # 检查端口是否仍被占用，如果是则杀死占用进程
     PORT_PID=$(get_pid_by_port "$stop_port")
     if [[ -n "$PORT_PID" ]]; then
-        log_warn "发现端口 $stop_port 仍被占用 (PID: $PORT_PID)，正在停止..."
+        log_warn "Port $stop_port still in use (PID: $PORT_PID), stopping..."
         kill "$PORT_PID" 2>/dev/null
         sleep 1
         if kill -0 "$PORT_PID" 2>/dev/null; then
             kill -9 "$PORT_PID" 2>/dev/null
         fi
-        log_info "已停止端口 $stop_port 上的进程 (PID: $PORT_PID)"
+        log_info "Stopped process on port $stop_port (PID: $PORT_PID)"
     elif [[ "$stopped" != "true" ]]; then
-        log_warn "应用未在运行"
+        log_warn "App is not running"
     fi
 
     rm -f "$PORT_FILE"
+
+    if [[ -f "$coverage_marker" ]]; then
+        local cov_dir="${SINGLEBOX_COVERAGE_DIR:-$WORK_DIR/tmp/coverage}/baas"
+        shopt -s nullglob
+        local cov_files=("$cov_dir"/.coverage.*)
+
+        if [[ ${#cov_files[@]} -gt 0 ]]; then
+            COVERAGE_FILE="$cov_dir/.coverage" uv run coverage combine "${cov_files[@]}" >/dev/null 2>&1 || true
+            COVERAGE_FILE="$cov_dir/.coverage" uv run coverage html -i -d "$cov_dir/htmlcov" >/dev/null 2>&1 || true
+            log_info "Coverage report: file://$cov_dir/htmlcov/index.html"
+
+            if [[ -n "${COVERAGE_E2E_DIR:-}" ]]; then
+                local session_label="${SESSION_LABEL:-session-$$}"
+                local session_dir="$COVERAGE_E2E_DIR/$session_label"
+                mkdir -p "$session_dir"
+                cp "$cov_dir/.coverage" "$session_dir/"
+                COVERAGE_FILE="$session_dir/.coverage" uv run coverage html -i -d "$session_dir/htmlcov" >/dev/null 2>&1 || true
+                local summary
+                summary=$(COVERAGE_FILE="$session_dir/.coverage" uv run coverage report --format=total 2>/dev/null | tail -1)
+                log_info "[COVERAGE] $session_label: $summary → file://$session_dir/htmlcov/index.html"
+            fi
+        fi
+
+        shopt -u nullglob
+        rm -f "$coverage_marker"
+    fi
 }
 
 # 查看状态

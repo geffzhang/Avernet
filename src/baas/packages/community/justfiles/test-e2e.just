@@ -1,11 +1,14 @@
+test-e2e-baseline mode='bare' overlay='e2e-sqlite':
+    source scripts/lib/test-stages.sh && run_e2e_baseline {{mode}} {{overlay}}
+
 test-e2e-crud mode='bare' overlay='e2e-sqlite':
-    source scripts/lib/test-stages.sh && run_e2e_crud {{mode}} {{overlay}}
+    source scripts/lib/test-stages.sh && run_e2e_baseline {{mode}} {{overlay}}
 
 test-e2e-sync mode='bare' overlay='e2e-sqlite':
-    source scripts/lib/test-stages.sh && run_e2e_sync {{mode}} {{overlay}}
+    source scripts/lib/test-stages.sh && run_e2e_baseline {{mode}} {{overlay}}
 
 test-e2e-async mode='bare' overlay='e2e-sqlite':
-    source scripts/lib/test-stages.sh && run_e2e_async {{mode}} {{overlay}}
+    source scripts/lib/test-stages.sh && run_e2e_baseline {{mode}} {{overlay}}
 
 test-e2e-mock-hook mode='bare' overlay='e2e-sqlite':
     source scripts/lib/test-stages.sh && run_e2e_mock_failure_hook {{mode}} {{overlay}}
