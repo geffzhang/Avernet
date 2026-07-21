@@ -346,6 +346,54 @@ bcs session file capabilities --session <sid>
   轻鉴权 —— 即分享权限边界完全由 BCS 的 token 签名 + 过期决定，与 baas `share-link` 无直接耦合
   （baas `presign_get` 仅提供短期字节 URL，BCS 把它的 TTL 收敛到 ≤ token 过期）。
 
+## bcs-coordination skill 更新
+
+`bcs-cli` 内置的 `bcs-coordination` skill（`crates/tools/bcs-cli/bcs-coordination/`）是 bot/agent
+使用 BCS 的操作入口（`SKILL.md` + `references/<场景>.md`）。会话工作区新增文件能力后，须同步更新该
+skill，使 bot 能用 CLI 上传/下载/分享/列举会话文件，与现有 `session` reference（`references/session.md`）
+能力并列。
+
+### 新增 reference：`references/session-file.md`
+
+对标 `session.md` 的体例（概念 → 命令清单表 → 每命令示例 → 返回结果汇总），覆盖 CLI §2 的全部子命令：
+
+- **概念**：会话工作区（session workspace）= 一个 Session 内 bot/human 共享的文件区；`file_id` 唯一、
+  允许同名；`FileStatus`（`Pending`/`Ready`/`Failed`）；`Ready` 才可下载/分享/删除。
+- **权限**：会话参与者可 upload/download/list/share；删除/取消限上传者或会话创建者/driver bot。
+- **命令清单表**（与 CLI §2 一致）：`session file upload` / `list` / `download` / `delete` / `share` /
+  `capabilities`，每条标必需参数与说明。
+- **`session file upload`**：三阶段一次性封装（`POST /files` prepare → PUT `upload_url` → `POST /complete`）；
+  说明 `upload_url` 指向随后端能力（presign 后端直传后端、字节不经 BCS；local 经 BCS），失败会尝试 `DELETE`
+  取消。给小文件与大文件（≥100MB 自动 multipart，并行 PUT 各 `parts[].upload_url`）示例。
+- **`session file download`**：跟随预签名 302 自动落到后端（baas/OSS）或 BCS 流式（local），流式写 `--out`。
+- **`session file share`**：生成分享链接返回 `share_url`（可直接分发，不校验会话权限，过期失效）；
+  说明分享下载是裸 URL，无 CLI 子命令。
+- **`session file capabilities`**：打印 `{storage, presign_upload, presign_download, max_size}`，
+  供脚本预判字节是否直连后端、是否需要客户端可达 OSS。
+- **返回结果汇总表**。
+
+要点对齐 spec：100MB 是单片/分段阈值（非硬截断），`expires_at`/`method` 在 multipart prepare 响应最外层，
+分享 token 用独立密钥 `[session_files.share] token_secret`（不复用 invite）。
+
+### `SKILL.md` 改动点
+
+- **场景指南表**（`## 场景指南` 下表格）加一行：
+  `| session-file | 会话工作区文件上传/下载/分享/列/删 | references/session-file.md |`
+- **协作模式快速选择树**加一支：在 `session` 分支后补
+  `需要群组内共享文件？ → 是 → 使用 session file → 读取 references/session-file.md`。
+- **注意事项**补一条：`session file upload` 对 presign 后端（baas/OSS）要求本机/进程网络可达 OSS；
+  仅能连 BCS 的环境用 local 后端。跨主机 PUT 时 `bcs` 包装函数已带 `--token`，但 PUT 到后端 OSS URL
+  时 Bearer 不应发送（OSS 用预签名 URL 自鉴权）—— 若 `bcs-cli` 内部用 reqwest，默认跨主机剥离
+  `Authorization`，无需用户处理；自定义客户端需注意。
+
+### 与 `session.md` 的衔接
+
+`references/session.md` 的命令清单表与"相关 reference"区块加一条指向 `session-file.md`：
+会话级文件操作是 `session` 能力的子集（同一 `<session_id>` 作用域），不另立顶层场景。
+
+> 实现时这些 skill 文件改动随 CLI §2 子命令落地一并提交；本节只约定改动范围与内容契约，不展开
+> 全文（全文在实现期按 `session.md` 体例撰写）。
+
 ## 配置
 
 新增到 bootstrap 配置（`config.rs`），对标现有插件配置块。**`max_size`（=`min(BCS max_file_size,
