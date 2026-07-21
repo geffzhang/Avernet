@@ -61,27 +61,54 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 | `delete`（`Ready` 文件） | `DELETE /staging?key={oss_key}` | 仅对终态 ticket（`DONE`/`FAILED`/`CANCELLED`）有效；BCS 保证调用前文件 `Ready`（`DONE`）。`404 OSS_OBJECT_NOT_FOUND` 映射为 `Ok`（幂等）。 |
 | `health_check` | baas base_url 可达性探测（`HEAD/GET` base 或配置的 `health_probe_path`） | **不依赖任何真实 transfer_id**，避免污染/依赖生产数据。仅探测 base_url 可达 + 鉴权可用，不探测真实对象。 |
 
-### `UploadHandle` 形态（baas）
+### `object_handle` 字段定义
 
-`prepare_upload` 返回、`stream_upload`/`complete_upload`/`abort_upload` 重建用的句柄，序列化进
-`object_handle`：
+`SessionFile.object_handle` 是一个 **JSON 字符串**，存于 `bcs_session_files.object_handle` 列
+（`TEXT`）。它是 `UploadHandle`（`Pending` 时）或 `StorageHandle`（`Ready` 后）经
+`serde_json::to_string` 序列化的结果；每次跨 HTTP 请求用时由 `serde_json::from_str` 重建。
+结构是后端特定的（`backend_handle: serde_json::Value`），baas 的定义如下。注意它对客户端不透明
+（§1.9 分享元信息会省略该字段）。
+
+顶层的 `UploadHandle` / `StorageHandle`（trait 契约，与后端无关的 envelope）：
 
 ```jsonc
-// UploadHandle.backend_handle (baas, single)
+// UploadHandle (Pending 期间持久化的完整 object_handle)
 {
-  "transfer_id": "a1b2c3d4...",
-  "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=...",
-  "oss_key": "file-transfers/.../model.bin",
-  "expires_at": 1721466000
+  "backend": "baas",
+  "key": "session-files/prod/{sid}/{file_id}/{file_name}",   // BCS 派生的终态 key
+  "backend_handle": { /* 见下，baas 特定 */ },
+  "expires_at": 1721466000                                    // 上传链接/句柄过期时间（unix 秒）
+}
+// StorageHandle (Ready 后持久的 object_handle，瘦身后)
+{
+  "backend": "baas",
+  "key": "session-files/prod/{sid}/{file_id}/{file_name}",
+  "backend_handle": { /* 见下，baas 特定，去掉过期 OSS 直传 URL */ }
+}
+```
+
+`backend_handle`（baas 特定）有 3 种形态：
+
+```jsonc
+// backend_handle: baas, single, Pending（单片上传期间）
+{
+  "transfer_id": "a1b2c3d4...",                               // baas ticket id，stream/complete/abort/share-link/staging 寻址用
+  "type": "SINGLE",                                           // baas 分流结果
+  "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=...",  // baas 签发的真 OSS 直传 URL，stream_upload 转发目标
+  "oss_key": "file-transfers/.../model.bin",                  // OSS 对象 key，delete(DELETE /staging) 寻址用
+  "expires_at": 1721466000                                    // 上传 URL 过期时间（≤ envelope.expires_at）
 }
 ```
 
 ```jsonc
-// UploadHandle.backend_handle (baas, multipart)
+// backend_handle: baas, multipart, Pending（分段上传期间；part 多时该 JSON 可达数百 KB）
 {
   "transfer_id": "a1b2c3d4...",
-  "upload_session_id": "oss-session-xxxxx",
-  "parts": [
+  "type": "MULTIPART",
+  "upload_session_id": "oss-session-xxxxx",                   // OSS multipart upload 会话 id（optional，调试/abort 用）
+  "part_size": 10485760,                                      // 每片字节数
+  "part_count": 500,
+  "parts": [                                                  // 一次 prepare 返回的所有 part 的真 OSS 直传 URL
     { "part_number": 1, "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=..." },
     { "part_number": 2, "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=..." }
   ],
@@ -91,16 +118,87 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 ```
 
 ```jsonc
-// StorageHandle.backend_handle (baas, Ready 后)
+// backend_handle: baas, Ready（complete 后瘦身，去掉过期的 OSS 直传 URL）
 {
   "transfer_id": "a1b2c3d4...",
+  "type": "SINGLE",          // 或 "MULTIPART"，保留原始分流记录
   "oss_key": "file-transfers/.../model.bin"
 }
 ```
 
+字段用途速查：
+
+| 字段 | 谁写入 | 谁读取 | 用途 |
+|---|---|---|---|
+| `backend` / `key` | BCS envelope | BCS / plugin | 路由到正确 plugin；`key` 用于 local 派生路径/DIAG |
+| `transfer_id` | `prepare_upload`（baas 返回） | `complete_upload`/`abort_upload`/`presign_get` | baas ticket 寻址：complete、DELETE /upload-url、share-link |
+| `oss_direct_put_url`（含 parts[]） | `prepare_upload`（baas 返回） | `stream_upload` | **字节转发目标**——BCS 把客户端字节 PUT 到这里，直入 OSS |
+| `upload_session_id` / `part_size` / `part_count` | `prepare_upload` | abort / DIAG | OSS multipart 会话管理 |
+| `oss_key` | `prepare_upload`（baas 返回或 BCS 派生） | `delete` | `DELETE /staging?key={oss_key}` 删除 OSS 对象 |
+| `expires_at` | `prepare_upload` | BCS | prepare 返回的 `expires_at` 来源；过期后 sweep 转 `Failed` |
+| `type` | `prepare_upload` | complete/abort | 记录 SINGLE vs MULTIPART 分流结果 |
+
 `complete_upload` 成功后，BCS 把 `object_handle` 从 `UploadHandle` 形态替换为 `StorageHandle` 形态
-（保留 `transfer_id`/`oss_key`，去掉已过期的 OSS 直传 URL）。`presign_get`/`delete` 用 `StorageHandle`
-里的 `transfer_id`（`share-link`）/`oss_key`（`DELETE /staging`）寻址。
+（保留 `transfer_id`/`type`/`oss_key`，**去掉过期的 OSS 直传 URL**）。`presign_get`/`delete` 用
+`StorageHandle` 里的 `transfer_id`（`share-link`）/`oss_key`（`DELETE /staging`）寻址。
+
+> **命名澄清**：客户端在 HTTP §1.2.b 看到的 `parts[].upload_url` 是 **BCS 重写后的代理 URL**
+> （`http://{bcs-host}/.../content?part={n}`），与本节 plugin 内部存的真实
+> `parts[].oss_direct_put_url`（baas 签发的 OSS 直传 URL）**是两个不同的东西**——前者给客户端 PUT，
+> 后者 BCS 内部转发目标。客户端永远看不到 `oss_direct_put_url`。
+
+## client → BCS → baas 上传完整流程
+
+以大文件（`size ≥ MULTIPART_THRESHOLD`，分段）留存模式为例。单片流程是它的子集（无 `parts`/part_number，
+`type:"SINGLE"`）。该流程体现 baas 的"纯转发"与流量隔离：客户端字节经 BCS 流式中继到 OSS，baas 服务
+实例不碰字节、BCS 不落盘不缓冲全文件。关键是 **BCS 在 prepare 阶段就拿到 baas 签发的真 OSS 直传
+URL，存进 `object_handle`**，后续 stream_upload 靠 `part_number` 索引到对应真 URL 转发。
+
+```
+1. prepare
+   client ──POST /sessions/{sid}/files {file_name, size:5GB, mime}──► BCS
+   BCS prepare_upload:
+     BCS ──POST {base_url}/upload-url {filename, file_size:5GB, expire_seconds, 无device_path}──► baas
+     baas（留存模式，file_size≥阈值）:
+        data: {transfer_id, type:"MULTIPART", upload_session_id, part_size:10MB, part_count:500,
+               parts:[{1, upload_url:<OSS_URL_1>}, {2, upload_url:<OSS_URL_2>}, ...]}
+     BCS 构造 UploadHandle{backend:"baas", key, backend_handle:{transfer_id, type:"MULTIPART",
+        upload_session_id, parts:[{n, oss_direct_put_url:<OSS_URL_n>}], oss_key, expires_at}, expires_at}
+     BCS 持久化到 bcs_session_files.object_handle（JSON string），行置 Pending
+     BCS 对客户端重写 upload_url（代理化，不外泄真 OSS URL）:
+   BCS ──201 {file_id, mode:"multipart", part_size, part_count,
+              parts:[{1, upload_url:"http://{bcs}/.../content?part=1", method:PUT, expires_at}, ...]}──► client
+
+2. stream（每个 part，可并行）
+   client ──PUT http://{bcs}/.../content?part=3  <10MB bytes>──► BCS
+   BCS stream_upload(handle, Some(3), bytes):
+     从 object_handle.backend_handle.parts[2] 取出真 OSS_URL_3（baas 签发的直传 URL）
+     BCS ──PUT <OSS_URL_3>  stream 转发那 10MB 字节──► OSS   （baas 实例不参与字节流）
+   OSS ──200──► BCS
+   BCS ──202 {file_id, status:"Pending"}──► client
+   （… client 把 500 个 part 都 PUT 完 …）
+
+3. complete
+   client ──POST /.../files/{file_id}/complete {}──► BCS
+   BCS complete_upload(handle):
+     BCS ──POST {base_url}/upload-url/{transfer_id}/complete {}──► baas
+     baas: OSS list_parts + 组装 multipart（客户端/BCS 都不收集 ETag），ticket→UPLOAD_COMPLETED
+     BCS 轮询 GET /transfers/{transfer_id}：留存模式直接 DONE（无 pull）
+     BCS 把 object_handle 从 UploadHandle 替换为 StorageHandle（去过期 OSS 直传 URL），行置 Ready
+   BCS ──200 Ready SessionFile──► client
+```
+
+要点：
+- **prepare 一次请求，BCS 拿到所有 part 的真 OSS 直传 URL**（baas `MULTIPART` 响应一次性返回
+  `parts[]`，见 baas API doc §1.1）。BCS 把它们存进 `object_handle`，客户端只看到重写后的代理 URL。
+- **`part_number` 是客户端→BCS→真 OSS URL 的索引桥梁**：客户端 PUT `?part=3` 的 `3` 正是 BCS 用来
+  从 `object_handle.parts[]` 定位 `OSS_URL_3` 的 key。这就是 trait `stream_upload(handle, part_number, body)`
+  必须带 `part_number` 的原因（v1 起即真实使用）。
+- **字节两跳、不落盘**：client→BCS（PUT body 流）→OSS（reqwest 流式转发），BCS 不缓冲全文件、不写本地。
+- **baas 状态机细节封装在插件内**：`CREATED → UPLOADING → UPLOAD_COMPLETED → DONE` 的轮询、`list_parts`
+  组装都在 `complete_upload` 内完成，对 `SessionFileService`/客户端不可见。
+- **abort**：任意时刻 client `DELETE` → BCS `abort_upload` 调 `DELETE /upload-url/{transfer_id}`，
+  baas ticket 转 `CANCELLED`、OSS multipart 会话 abort（若进行中），随后删元数据行。
 
 ## 错误映射
 
