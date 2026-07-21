@@ -262,11 +262,6 @@ v2 分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stre
 - `502 STORAGE_BACKEND` —— 后端删除/取消失败（不泄漏后端内部信息，可重试）；
 - （行存在/已不存在均不返回 `404 FILE_NOT_FOUND`：存在则 204，不存在的 `file_id` 也 204。）
 
-**错误：**
-- `403 FORBIDDEN` —— 非上传者且非会话创建者/driver；
-- `502 STORAGE_BACKEND` —— 后端删除/取消失败（不泄漏后端内部信息，可重试）；
-- （不再返回 `404 FILE_NOT_FOUND`：重复删除/取消走幂等 204。）
-
 ## 1.6 列文件 — `GET /sessions/{sid}/files`
 
 **查询参数：**
@@ -316,6 +311,80 @@ Bearer token 不泄漏给 OSS；OSS 预签名 URL 自带 query 签名，自洽�
 **错误：** `404 FILE_NOT_FOUND`；文件非 `Ready` 返 `422`。
 
 > 文件的删除与上传取消见 1.5。
+
+## 1.9 分享文件（share link）
+
+为 `Ready` 的文件生成一个**不校验会话权限**的分享链接：拿到链接者凭 token 即可下载/查元信息，
+过期失效。token 为无状态签名（HMAC-SHA256，对标 invite/register token 方案，但**使用独立密钥**
+`[session_files.share] token_secret`，不复用 invite 密钥）。无状态意味着**不可撤销**（未过期前一直
+有效）；撤销方式 = 删除文件（删除后 token 验证时查 DB 行失败 → `404`）或等自然过期。无 DB 表、
+无活跃分享列表。
+
+### 1.9.a 生成分享 — `POST /sessions/{sid}/files/{file_id}/share`
+
+**权限：** 与 `DELETE` 一致 —— 上传者（human 上传者；若上传者是 bot 则需拥有该 bot）或会话创建者 /
+该 group 的 driver bot。普通成员不可生成他人文件的分享。
+
+**请求 body：** `application/json`，可空
+```json
+{ "ttl_seconds": 86400 }
+```
+`ttl_seconds` 可选，默认 `[session_files.share] default_ttl_seconds`（86400 = 24h），范围 60–604800
+（1 分钟至 7 天）。
+
+**响应 201：**
+```json
+{
+  "share_url": "http://{bcs-host}/sessions/g1:a1b2c3d4/shared-file/content?token=eyJ...",
+  "share_token": "eyJ...",
+  "expires_at": 1721466000
+}
+```
+
+`share_url` 指向 BCS 自有的 `GET .../shared-file/content?token=` 端点（见 1.9.c），可直接分发/点击。
+文件需 `Ready`，否则 `422 INVALID_STATE`。
+
+### 1.9.b 查询分享文件元信息 — `GET /sessions/{sid}/shared-file?token={token}`
+
+**权限：无** —— 仅校验 token 签名 + 过期 + `{sid}` 与文件 `session_id` 一致，**跳过会话成员鉴权**。
+
+```json
+{
+  "file_id": "01HZX...",
+  "session_id": "g1:a1b2c3d4",
+  "file_name": "report.pdf",
+  "mime_type": "application/pdf",
+  "size": 1048576,
+  "sha256": null,
+  "owner": { "actor_kind": "Human", "actor_id": "human_327325" },
+  "storage_backend": "baas",
+  "status": "Ready",
+  "created_at": 1721462400,
+  "updated_at": 1721462405
+}
+```
+
+返回裁剪后的 `SessionFile`：**省略 `object_handle`**（内部后端句柄，不透出分享消费者）。`{sid}`
+此处仅作路径命名空间与一致性校验（token 解出的 `file_id` 查行后，若行 `session_id` ≠ 路径 `{sid}`
+返 `404`），不参与鉴权。
+
+### 1.9.c 下载分享文件字节 — `GET /sessions/{sid}/shared-file/content?token={token}`
+
+**权限：无**（同 1.9.b 的校验，跳过成员鉴权）。字节路由复用 1.8：
+- 预签名后端：**302 跳转** 到 `StoragePlugin::presign_get` 签名 URL，**有效期取 token 过期与后端
+  预签名 TTL 的更早者**（确保分享链接过期后该 URL 亦不可用）。跨主机重定向自动剥离 `Authorization`
+  头。
+- 本地后端：流式返回 body，含 `Content-Type`/`Content-Length`/`Content-Disposition: attachment;
+  filename="..."`。
+
+### 错误（1.9.b / 1.9.c 共用）
+
+- `401` —— token 签名无效 / 版本不支持（`InvalidSignature`/`UnsupportedVersion`）；
+- `410 GONE` —— token 已过期（`Expired`，与 invite 的 `Expired → 410` 一致）；
+- `404 FILE_NOT_FOUND` —— 文件已删/`{sid}` 与文件 `session_id` 不一致/`file_id` 不存在；
+- `422 INVALID_STATE` —— 文件非 `Ready`（如中途转 `Failed`，理论上 `Ready` 才能生成分享）；
+- `502 STORAGE_BACKEND` —— 后端取字节失败。
+- 1.9.a 另有：`403 FORBIDDEN`（非上传者/创建者/driver）、`404 FILE_NOT_FOUND`、`422 INVALID_STATE`。
 
 ---
 
@@ -371,7 +440,14 @@ bcs session file delete --session <sid> --file-id <id> [--token <t>] [--url <bcs
 ```
 按服务端文件状态生效：`Pending` 时取消上传，`Ready` 时删除文件。成功时打印空/确认信息。
 
-### 2.5 `capabilities` —— 查询后端能力
+### 2.5 `share` —— 生成分享链接
+```
+bcs session file share --session <sid> --file-id <id> [--ttl <seconds>] [--token <t>] [--url <bcs-url>]
+```
+调 `POST .../files/{file_id}/share`，打印 `{share_url, share_token, expires_at}`。分享链接是可直接
+分发/点击的裸 URL，下载无需 CLI 子命令（浏览器/curl/`GET .../shared-file/content?token=`）。
+
+### 2.6 `capabilities` —— 查询后端能力
 ```
 bcs session file capabilities --session <sid> [--token <t>] [--url <bcs-url>]
 ```

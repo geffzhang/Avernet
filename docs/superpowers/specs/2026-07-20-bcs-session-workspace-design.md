@@ -50,6 +50,7 @@ baas 后端的实现细节见 `2026-07-20-bcs-session-workspace-design-baas-plug
 
 ```
 crates/contracts/bcs-domain/src/session_file.rs        # SessionFile 领域类型
+crates/contracts/bcs-domain/src/share.rs               # ShareTokenPayload + share_token_encode/decode_and_verify（对标 invite/register）
 crates/contracts/bcs-protocol/src/session_file.rs      # wire DTO（HTTP 请求/响应）
 
 crates/plugin-api/bcs-storage-api/                     # StoragePlugin trait + 错误 + 类型 + 契约测试 + FakeStoragePlugin
@@ -196,6 +197,11 @@ baas 后端 `UploadHandle` 形态、方法→baas HTTP 映射、错误映射等�
 | `GET`  | `/sessions/{sid}/files/{file_id}` | **文件元数据**（`SessionFile`）。 |
 | `GET`  | `/sessions/{sid}/files/{file_id}/content` | **下载字节** —— 预签名后端 302 跳转到签名 URL；本地后端流式返回 body。 |
 | `DELETE` | `/sessions/{sid}/files/{file_id}` | **取消上传**（`Pending`/`Failed`）或 **删除文件**（`Ready`）。 |
+| `POST` | `/sessions/{sid}/files/{file_id}/share` | **生成分享链接**（需 `Ready`），返回 `share_url` + `share_token` + `expires_at`。 |
+| `GET`  | `/sessions/{sid}/shared-file?token={token}` | **分享文件元信息**（无鉴权，仅校验 token + 过期 + `sid` 一致）。 |
+| `GET`  | `/sessions/{sid}/shared-file/content?token={token}` | **分享下载字节**（无鉴权，字节路由同 `GET .../content`）。 |
+
+> 分享链接详情见 API 文档 §1.9。
 
 v1 强制 ~100 MB 单片上限（`size ≥` 分段阈值时直接 `413`，prepare 仅返回 `mode: "single"`）；
 分段上传（`mode: "multipart"`，prepare 一次返回所有分片 `upload_url`，由 `complete_upload`
@@ -212,6 +218,7 @@ bcs session file upload       --session <sid> --path <local> [--mime] [--name]  
 bcs session file list         --session <sid> [--prefix] [--limit] [--marker]
 bcs session file download     --session <sid> --file-id <> [--out <path>]
 bcs session file delete       --session <sid> --file-id <>                        # 删除 / 取消
+bcs session file share        --session <sid> --file-id <> [--ttl <seconds>]      # 生成分享链接
 bcs session file capabilities --session <sid>
 ```
 
@@ -266,8 +273,56 @@ bcs session file capabilities --session <sid>
 - **memory store**：对标现有 `*-store/src/memory.rs` 实现 `SessionFileRepo::memory`，
   用于无 MySQL 的快速 HTTP 层测试。
 - **HTTP 层测试：** 三阶段上传（prepare/stream/complete）、`abort`/删除分流（含 `Failed`→abort
-  分支）、list 分页、预签名下载 302 跳转流、delete 403/204 + 幂等 204。
+  分支）、list 分页、预签名下载 302 跳转流、delete 403/204 + 幂等 204、share 链接生成与无鉴权下载
+  （过期 → 410、删文件 → 404、`sid` 不一致 → 404）。
 - baas 后端的契约/integration 测试见 `design-baas-plugin.md`。
+
+## 分享链接（share link）
+
+为 `Ready` 的文件生成**不校验会话权限**的分享链接：拿到链接者凭 token 即可下载/查元信息，过期失效。
+完整 HTTP/CLI 契约见 API 文档 §1.9 / §2.5。
+
+### token 与签名
+
+- 无状态签名 token，复用 BCS 现有 invite/register 的 **HMAC-SHA256(JSON payload) + base64url-no-pad**
+  方案，但**使用独立密钥** `[session_files.share] token_secret`（**不复用 invite 密钥**），与
+  invite/register 互相不可伪造。
+- 新增 `crates/contracts/bcs-domain/src/share.rs`（对标 `invite.rs`/`register.rs`，复制+改名）：
+  ```rust
+  #[derive(Serialize, Deserialize)]
+  pub struct ShareTokenPayload { pub v: u8, pub file_id: String, pub exp: u64 }
+  pub fn share_token_encode(&ShareTokenPayload, secret: &[u8]) -> String;
+  pub fn share_token_decode_and_verify(token: &str, secret: &[u8])
+      -> Result<ShareTokenPayload, ShareTokenError>;  // 验签 + 过期 + 版本
+  ```
+  经 `bcs-service-api` re-export（与 invite/register 同款）。
+
+### 架构与鉴权模型
+
+- **mint（`POST .../files/{file_id}/share`）**:权限同 `DELETE`（上传者/创建者/driver），文件需
+  `Ready`（否则 `422`）。构造 `{v:1, file_id, exp}` → encode → 拼成
+  `{share_base_url或请求host}/sessions/{sid}/shared-file/content?token={token}` 返回。无 DB 写入
+  （纯无状态），无活跃分享列表。
+- **消费（`GET .../shared-file` / `.../shared-file/content?token=`）**:权限 = **无**。流程：
+  `share_token_decode_and_verify` → 解出 `file_id` → 查 `bcs_session_files` 行 → 若行 `session_id` ≠
+  路径 `{sid}` 返 `404`（路径混淆保护）→ 跳过会话成员鉴权 → `Ready` 校验 →
+  元信息候选端返回（**省略 `object_handle`**）；下载端复用 `GET .../content` 字节路由
+  （预签名后端 302 到 `StoragePlugin::presign_get`，**预签名 URL 有效期取 token 过期与后端 TTL 的
+  更早者**；本地后端 `get_stream` 流式返回）。
+- 不新增 `StoragePlugin` 方法、不新增 DB 表，分享功能纯 token + routing。
+- `{sid}` 在消费端仅作路径命名空间与一致性校验，**不参与鉴权**，且分享消费者无需知道也不依赖 `sid`
+  （`share_url` 自带 `sid` 与 `token`）。
+
+### 生命周期与安全
+
+- **不可撤销**：无状态 token 在自然过期前一直有效；撤销方式 = 删除文件（删后 token 验证查行失败 →
+  `404`）。无 tombstone/分享表（已在 brainstorming 阶段明确接受此权衡：分享链接的生命周期短、场景
+  受控，不引入额外 schema）。
+- **secret 与重启**：`token_secret` 未配时启动告警 + 随机 32B 密钥（进程重启即失效，旧 share token
+  全部无法验证），与 invite 一致；生产**必须**显式配置固定密钥。
+- 预签名后端（baas）下，分享下载经 BCS 302 到 OSS 预签名 URL，token 验签在 BCS 内完成，OSS 不参与
+  轻鉴权 —— 即分享权限边界完全由 BCS 的 token 签名 + 过期决定，与 baas `share-link` 无直接耦合
+  （baas `presign_get` 仅提供短期字节 URL，BCS 把它的 TTL 收敛到 ≤ token 过期）。
 
 ## 配置
 
@@ -282,4 +337,9 @@ storage_backend = "local"       # "local"（v1 默认）| "baas"
 max_file_size = 104857600       # 100 MB v1；max_size = min(max_file_size, 后端 max_object_size)
 data_dir = "/var/bcs/session-files"   # local only；可为相对路径或由启动脚本解析 $BCS_DATA_DIR
 # storage_backend = "baas" 时见 design-baas-plugin.md 的 [session_files.baas] 配置块
+
+[session_files.share]
+token_secret = "<share-token-secret>"   # 必填（生产），与 [invite] token_secret 隔离，不复用
+default_ttl_seconds = 86400             # 默认 24h；mint 时可按请求覆盖，范围 60–604800
+share_base_url = "https://bcs.example.com"  # 可选；share_url 前缀，不配则用请求 host 推导
 ```
