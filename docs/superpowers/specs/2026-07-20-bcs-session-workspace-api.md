@@ -22,9 +22,10 @@
 - 大小单位为字节。
 - `ActorRef = { "actor_kind": "Bot"|"Human", "actor_id": "<string>" }`。
 - `object_handle` 为后端特定的不透明字符串（`UploadHandle`/`StorageHandle` 的序列化形式），
-  客户端应视为不可解析、仅用于回传。
+  **仅持久化于 BCS DB 行内部，不透出给客户端**；客户端所有操作以 `file_id` 寻址。
 - 字段可空性：`sha256` 为可选 —— 后端未校验/未返回完整性哈希时为 `null`（baas 留存模式
-  通常不返回 sha256）。客户端必须按可空解析，不得将 `sha256` 视为必填。
+  **v1 不做内容完整性校验，`sha256` 恒为 `null`（占位字段）**；未来后端可在 `complete_upload`
+  返回 sha256 时透出。客户端必须按可空解析，不得将 `sha256` 视为必填。
 
 ### `FileStatus` 状态机
 
@@ -52,7 +53,6 @@ v1 不会看到 `Deleting`（删除接口同步返回 204 或 502）。
   "sha256": null,
   "owner": { "actor_kind": "Human", "actor_id": "human_327325" },
   "storage_backend": "baas",
-  "object_handle": "a1b2c3d4-transfer-id",
   "status": "Ready",
   "created_at": 1721462400,
   "updated_at": 1721462405
@@ -79,7 +79,7 @@ HTTP 状态码跟随错误码（见各端点说明）。通用错误码：
 | `PAYLOAD_TOO_LARGE` | 413 | 超过 `max_size`（= min(BCS `max_file_size` 配置, 后端 `max_object_size`)，bootstrap 阶段静态化）。注意 100MB 仅是单片/分段阈值，超 100MB 走分段而非 413；仅超 `max_size` 才 413 |
 | `INVALID_STATE` | 422 | 资源状态不满足**读取/下载**前提：如对非 `Ready` 文件执行 `GET .../content` |
 | `UNSUPPORTED_BACKEND` | 501 | 后端不支持所请求能力（如本地后端的 `presign_get` 下载预签名） |
-| `STORAGE_BACKEND` | 500/502 | 后端操作失败（不泄漏后端内部信息） |
+| `STORAGE_BACKEND` | 502 | 后端操作失败（BCS 对存储后端为网关角色，统一 502；不泄漏后端内部信息） |
 
 ---
 
@@ -107,7 +107,7 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 - `presign_download=true`：`GET .../content` 会 302 跳转到后端签名 URL，字节不经 BCS。
 - `presign_download=false`（local）：`GET .../content` 由 BCS 流式返回 body。
 - `max_size` = min(BCS `max_file_size` 配置, 后端 `capabilities().max_object_size`)，在 bootstrap
-  阶段计算并注入 `SessionFileService`，运行时不再动态调用 `capabilities()`（baas `capabilities()` 会 IO）。
+  阶段计算并注入 `SessionFileService`，运行时不再动态调用 `capabilities()`。**`capabilities()` 必须廉价、同步、无 IO**，返回构造期预计算的值；baas 任何 probe（`max_object_size` 等）在插件 `async fn new()` 构造时完成，不得在 `capabilities()` 内做阻塞 IO。
   注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
   注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
 
@@ -119,13 +119,14 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 ```json
 {
   "file_name": "model.bin",
-  "size": 52428800,
+  "size": 524288000,
   "mime_type": "application/octet-stream"
 }
 ```
 
 `size` 是权威值，后端据此在单片与分段间自动分流（阈值由后端 `capabilities().max_object_size`
 与分段阈值决定，对标 baas 的 `MULTIPART_THRESHOLD`，默认 100 MB）。客户端无需选择模式。
+`mode` wire 值为小写字符串 `"single"`/`"multipart"`（Rust 枚举 `UploadMode::{Single, Multipart}` 经 serde rename 为小写）；客户端按字符串匹配，不得按枚举名大小写解析。
 
 ### 1.2.a 单片上传（`size` < 分段阈值）
 
@@ -167,7 +168,7 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 在最外层，各 part 共用），可并行上传。`upload_url` 指向随后端能力：presign 后端（baas/OSS）为后端真
 直传 URL（客户端直传后端、字节不经 BCS）；local 后端为 BCS 代理 `PUT .../content?part={n}`。客户端
 PUT 各分片后调一次 `complete`，由 `StoragePlugin::complete_upload` 在后端组装（baas/OSS：`list_parts`/
-组装；local：按 `part_number` 顺序拼接段文件），客户端无需收集 ETag。中途可 `DELETE` 取消
+组装；local：按 `part_number` 顺序拼接段文件），客户端无需收集 ETag。**分段上传须所有分片 PUT 完成后再 `complete`；缺段或累计 size ≠ prepare `size` 时 `complete` 返 `409 INVALID_TRANSITION`（字节尚未上传完全），local 在 `complete_upload` 校验各段存在与累计大小。**`part_number` 为 `u16`（1–65535）；后端 `part_size` 选择须保证 `part_count ≤ 65535`，否则 prepare 返 `413 PAYLOAD_TOO_LARGE`。中途可 `DELETE` 取消
 （后端 abort 分段会话）。
 
 ### 通用约定
@@ -175,15 +176,15 @@ PUT 各分片后调一次 `complete`，由 `StoragePlugin::complete_upload` 在�
 `upload_url`（单片）与 `parts[].upload_url`（分段）始终由 BCS prepare 返回，但其**指向**随后端能力而异，
 客户端协议不变（始终 PUT 到该 URL 再 `complete`）：
 - **presign 上传后端**（baas/OSS，`supports_presign_put=true`）：URL 是后端签发的**真直传 URL**
-  （如 `https://oss.../?Sig=...`），客户端 PUT **直连后端、字节不经 BCS**。客户端跨主机 PUT 时应剥离
-  `Authorization`（OSS 预签名 URL 自带签名）。
+  （如 `https://oss.../?Sig=...`），客户端 PUT **直连后端、字节不经 BCS**。客户端跨主机 PUT 时**必须**剥离
+  `Authorization`（OSS 预签名 URL 自带签名）；这不是「靠默认」的软约束——`bcs-cli` 须显式配置
+  reqwest `RedirectPolicy`/请求构建，在直传目标 host 与 BCS 不同时不发送 Bearer，并有回归测试断言跨主机请求不含 `Authorization`。
 - **代理后端**（local，`supports_presign_put=false`）：URL 是 BCS 自有的 `PUT .../content`，字节经 BCS。
 
 要求客户端能直传 OSS 的前提：客户端网络可达 OSS（baas「第四通道」前提）；仅能连 BCS 的客户端用 local 后端。
 所有上传链接在 `expires_at` 前有效；超时未上传可用 `DELETE` 取消后重新发起。
 `expires_at` = BCS 给出的上传链接/句柄过期时间（取 `ttl_secs` 配置与后端签发 URL 过期时间的更早者）；
-超时未 `complete` 的 `Pending` 文件由后台 sweep 转为 `Failed` 并 `abort_upload` 清理后端，v1 由 sweep
-兜底（非 v1 阻塞）；`Failed` 后再 `complete` 收到 `INVALID_TRANSITION`（409），客户端可 `DELETE` 清理重传。
+超时未 `complete` 的 `Pending` 文件由后台 sweep 转为 `Failed` 并 `abort_upload` 清理后端。**v1 包含一个最小的 `Pending` 超时 sweep**（粗粒度定时器：扫描 `Pending` 且 `expires_at` 已过期的行 → 转 `Failed` + `abort_upload`），作为「兜底」；后端孤儿对象（无对应元数据行的对象）逐项对账 sweep 延后至 v1 之后。`Failed` 后再 `complete` 收到 `INVALID_TRANSITION`（409），客户端可 `DELETE` 清理重传。
 
 **错误：** 超 `max_size` 前置校验拒返 `413 PAYLOAD_TOO_LARGE`（`max_size` = min(`max_file_size`,
 后端硬上限)，**不是** 100MB 截断 —— 100MB 仅是单片/分段阈值，超 100MB 走分段而非拒绝）；非参与者返 `403 FORBIDDEN`。
@@ -321,7 +322,7 @@ PUT 各分片后调一次 `complete`，由 `StoragePlugin::complete_upload` 在�
 
 **重定向行为说明**：GET 的 302/307 会被标准 HTTP 客户端自动跟随（reqwest 默认跟随、`curl -L`、
 浏览器原生 GET），客户端最终从后端（OSS）取字节，对客户端透明、无需适配。重定向目标是跨主机
-（OSS 而非 BCS），规范客户端会在跨主机重定向时**剥离 `Authorization` 头**（reqwest 默认如此），
+（OSS 而非 BCS），规范客户端**必须**在跨主机重定向时**剥离 `Authorization` 头**——这不靠「reqwest 默认如此」承担，`bcs-cli` 须显式配置 `RedirectPolicy` 在跨 host 跳转时不转发 sensitive 头，并有回归测试断言跳转到 OSS host 时请求不含 Bearer。
 Bearer token 不泄漏给 OSS；OSS 预签名 URL 自带 query 签名，自洽。v1 客户端为 bot/CLI，302 完全够用；
 若后续 Web UI 经浏览器 `fetch` 直连遇到 CORS，可对那类客户端让 BCS 走中继回退（流式返回 body）。
 
@@ -333,7 +334,8 @@ Bearer token 不泄漏给 OSS；OSS 预签名 URL 自带 query 签名，自洽�
 
 为 `Ready` 的文件生成一个**不校验会话权限**的分享链接：拿到链接者凭 token 即可下载/查元信息，
 过期失效。token 为无状态签名（HMAC-SHA256，对标 invite/register token 方案，但**使用独立密钥**
-`[session_files.share] token_secret`，不复用 invite 密钥）。无状态意味着**不可撤销**（未过期前一直
+`[session_files.share] token_secret`，不复用 invite 密钥）。**token payload = `{ file_id, exp, version }`**
+（**不含 `session_id`**——`file_id` 全局唯一，消费端凭 `file_id` 查行取得 `session_id` 与路径 `{sid}` 比对）。无状态意味着**不可撤销**（未过期前一直
 有效）；撤销方式 = 删除文件（删除后 token 验证时查 DB 行失败 → `404`）或等自然过期。无 DB 表、
 无活跃分享列表。
 
@@ -381,7 +383,7 @@ Bearer token 不泄漏给 OSS；OSS 预签名 URL 自带 query 签名，自洽�
 }
 ```
 
-返回裁剪后的 `SessionFile`：**省略 `object_handle`**（内部后端句柄，不透出分享消费者）。`{sid}`
+返回裁剪后的 `SessionFile`（`object_handle` 为内部句柄，不透出任何客户端——分享响应与普通响应均不含）。`{sid}`
 此处仅作路径命名空间与一致性校验（token 解出的 `file_id` 查行后，若行 `session_id` ≠ 路径 `{sid}`
 返 `404`），不参与鉴权。
 
@@ -571,8 +573,8 @@ pub trait StoragePlugin: Send + Sync + 'static {
 pub struct StorageCapabilities {
     pub supports_presign_put: bool,     // upload: true → client PUTs direct to backend (baas/OSS); false → BCS proxy (local)
     pub supports_presign_download: bool, // download: true → GET .../content 302s; false → BCS streams
-    pub supports_stream_put: bool,       // true for all known backends (BCS-proxy upload path usable)
-    pub supports_stream_get: bool,       // true for all known backends
+    pub supports_stream_put: bool,       // v1 所有后端为 true；保留以备未来不支持流式上传的后端
+    pub supports_stream_get: bool,       // v1 所有后端为 true；保留以备未来不支持流式下载的后端
     pub max_object_size: u64,            // backend hard limit; BCS also enforces its own max_file_size
 }
 
@@ -658,9 +660,9 @@ pub struct StorageHealth {
     pub detail: Option<String>,
 }
 
-// ByteStream is an async byte stream. Concrete alias to be finalized in the
-// `bcs-storage-api` crate (e.g. `Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send + Unpin>`
-// over `bytes::Bytes`), matching the streaming types already used in `bcs-http`/`bcs-ws`.
+// ByteStream is an async byte stream over bytes::Bytes, matching the streaming
+// types already used in bcs-http/bcs-ws. This alias is the finalized contract
+// type — plugin impls use it for stream_upload input and get_stream output.
 pub type ByteStream = Box<dyn ByteStreamTrait + Send + Unpin>;
 
 pub trait ByteStreamTrait: futures_core::Stream<Item = Result<bytes::Bytes, std::io::Error>> {}
@@ -708,9 +710,9 @@ pub enum StorageError {
   与上一条并列
 - `capabilities()` 的 `backend_name` 一致且非空
 - `health_check` 对真实（或 stub）后端返回 ok
-- **运行时禁用 `capabilities()` 的契约**：除 bootstrap 阶段外，`SessionFileService` 不应在请求
+- **`capabilities()` 契约**：同步、廉价、无 IO，返回构造期预计算值；后端任何 probe 在插件 `async fn new()` 构造时完成，不在 `capabilities()` 内做阻塞 IO。除 bootstrap 阶段外，`SessionFileService` 不应在请求
   路径上调用 `capabilities()`；`capabilities` 应作为构造时注入的静态值（`max_size` 等在 bootstrap
-  固化）。契约测试可断言一次 prepare/complete 请求不触发二次 `capabilities()` 调用（baas 实现会 IO，禁止每请求调用）。
+  固化）。契约测试断言一次 prepare/complete 请求不触发二次 `capabilities()` 调用，且 `capabilities()` 本身不执行 IO（baas 实现的 probe 仅在构造期发生）。
 
 ### key 派生约定
 
@@ -771,7 +773,6 @@ baas 后端实现见 **`2026-07-20-bcs-session-workspace-design-baas-plugin.md`*
 - `bcs-storage-oss`：`supports_presign_put = true` + `supports_presign_download = true`；`prepare_upload`
   发 OSS 直传 URL（单片）/ OSS multipart init（分段）作为 `client_target: Direct{...}`，客户端直传；
   `complete_upload` 调 OSS complete-multipart；`delete` 删对象；`list` 不使用（BCS 从 DB 列）。
-  `delete` 删对象；`list` 不使用（BCS 从 DB 列）。
 - `bcs-storage-nas`：`supports_presign_download = false`；通过挂载的 NFS 路径流式，对标
   `bcs-storage-local`（temp + rename）。
 - 三方服务：实现该 trait；`SessionFileService` 及 HTTP/CLI 表面均无需改动。

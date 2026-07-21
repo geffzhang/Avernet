@@ -87,7 +87,7 @@ migrations/mysql/006_session_files.sql                 # bcs_session_files 表
 
 ```rust
 pub struct SessionFile {
-    pub file_id: String,          // ULID / "{sid}:{8hex}" 风格
+    pub file_id: String,          // 全局唯一 ULID（见「file_id 生成与唯一性」节），URL-safe、不透明
     pub session_id: String,
     pub file_name: String,
     pub mime_type: String,
@@ -111,6 +111,21 @@ pub struct SessionFile {
 `object_handle`、`status`、`created_at`、`gmt_create`、`gmt_modified`。
 索引：`(env, session_id)`，唯一索引 `(env, session_id, file_id)`。
 遵循现有 `env` + `gmt_create/gmt_modified` + utf8mb4 约定。
+
+### `file_id` 生成与唯一性
+
+BCS 为每个文件分配一个**全局唯一**的 `file_id`，作为客户端寻址与 share token payload 的唯一键。
+`file_id` 采用 **ULID**（与现有 `01HZX...` 示例一致：URL-safe、不透明、时间有序、26 字符 Crockford base32），
+由 BCS 在 `prepare_upload` 时生成，写入 `bcs_session_files.file_id`（PK）与 `(env, session_id, file_id)` 唯一索引。
+
+**不采用 `session_id + filename hash` 派生 `file_id`**，原因：
+- 本框架允许同一会话存在多个同名文件（§1.6：唯一索引在 `(env, session_id, file_id)`，不在 `file_name`），
+  纯 `session_id + filename hash` 会在同名文件上冲突，破坏唯一性；
+- share token payload 仅含 `{ file_id, exp, version }`（见「分享链接」），`file_id` 必须能唯一寻址一行，
+  可派生/可预测的 id 会削弱这一保证。
+
+会话/文件名归属信息体现在 DB 行与 object key（`session-files/{env}/{session_id}/{file_id}/{file_name}`，
+见「key 派生约定」），而非 `file_id` 本身——`file_id` 对客户端不透明，仅用于寻址。
 
 **BCS 始终以本表为文件列表的权威来源** —— 永不从后端拉取。这样无论后端如何
 （baas 列表是按 bot 命名空间、扁平、异步的），list/metadata 都保持快速、统一、可过滤。
@@ -148,7 +163,7 @@ pub trait StoragePlugin: Send + Sync + 'static {
 `abort_upload`/`delete` 重建使用（HTTP 无状态跨请求）。`StorageError { InvalidInput, NotFound,
 Conflict, Unsupported, Backend }` 对标 `DbError`；lint 禁止泄漏后端细节。
 
-`capabilities()` 同时驱动上传与下载的字节路由：
+`capabilities()` 必须廉价、同步、无 IO，返回构造期预计算值（baas 等 probe 仅在插件 `async fn new()` 构造期执行，不在 `capabilities()` 内做阻塞 IO）；其返回值同时驱动上传与下载的字节路由：
 
 - **上传** `supports_presign_put`：true（baas/OSS）→ `prepare_upload` 返回后端真直传 URL，客户端
   PUT 直连后端、字节不经 BCS，`stream_upload` 不被调用；false（local）→ BCS 用 `PUT .../content`
@@ -213,13 +228,15 @@ BCS 返回的 URL）。下游 `StoragePlugin` 由 `prepare_upload` 返回 `Prepa
 | `PUT`  | `/sessions/{sid}/files/{file_id}/content` | **上传字节**（仅本地后端经 BCS；presign 后端不走此端点，客户端直传后端）。与下载 `GET .../content` 同路径不同方法。 |
 | `POST` | `/sessions/{sid}/files/{file_id}/complete` | **完成上传**（后端 finalize / complete + 轮询）。 |
 | `GET`  | `/sessions/{sid}/files` | **列文件**（分页：prefix、limit、marker）。 |
-| `GET`  | `/sessions/{sid}/files/capabilities` | **后端能力**（`{storage, presign_download, max_size}`），可选，供客户端预判下载是否直连。 |
+| `GET`  | `/sessions/{sid}/files/capabilities` | **后端能力**（`{storage, presign_upload, presign_download, max_size}`），可选，供客户端预判上传/下载字节是否直连后端。 |
 | `GET`  | `/sessions/{sid}/files/{file_id}` | **文件元数据**（`SessionFile`）。 |
 | `GET`  | `/sessions/{sid}/files/{file_id}/content` | **下载字节** —— 预签名后端 302 跳转到签名 URL；本地后端流式返回 body。 |
 | `DELETE` | `/sessions/{sid}/files/{file_id}` | **取消上传**（`Pending`/`Failed`）或 **删除文件**（`Ready`）。 |
 | `POST` | `/sessions/{sid}/files/{file_id}/share` | **生成分享链接**（需 `Ready`），返回 `share_url` + `share_token` + `expires_at`。 |
 | `GET`  | `/sessions/{sid}/shared-file?token={token}` | **分享文件元信息**（无鉴权，仅校验 token + 过期 + `sid` 一致）。 |
 | `GET`  | `/sessions/{sid}/shared-file/content?token={token}` | **分享下载字节**（无鉴权，字节路由同 `GET .../content`）。 |
+
+> 路由注册：`/files/capabilities`（静态段）与 `/files/{file_id}`（参数段）同层，`router.rs` 须确保静态段优先匹配（axum matchit 默认静态优先），并在启动期加测试验证 `GET /files/capabilities` 不被当成 `file_id="capabilities"`。`PUT`/`GET` 同路径 `.../content` 靠方法区分。
 
 > 分享链接详情见 API 文档 §1.9。
 
@@ -266,8 +283,7 @@ bcs session file capabilities --session <sid>
 - **`expires_at` / Pending 超时：** prepare 返回的 `expires_at` = BCS 给出的上传链接/句柄过期时间
   （取 `ttl_secs` 配置与后端签发的 URL 过期时间的**更早者**）。客户端须在该时间前完成 PUT+complete；
   **超时未 `complete` 的 `Pending` 文件由后台 sweep 转为 `Failed` 并调用 `abort_upload` 清理后端**。
-  转为 `Failed` 后客户端若再 `complete` 收到 `INVALID_TRANSITION`（409）。该 sweep 为非 v1 阻塞项，
-  v1 可先由 sweep 兜底，前端按 `Failed` 可 `DELETE` 清理重传。
+  转为 `Failed` 后客户端若再 `complete` 收到 `INVALID_TRANSITION`（409）。**v1 包含一个最小的 `Pending` 超时 sweep**（粗粒度定时器：扫描 `Pending` 且 `expires_at` 已过期的行 → 转 `Failed` + `abort_upload`），作为兜底；前端按 `Failed` 可 `DELETE` 清理重传。
 - **删除/取消：** `Pending` 与 `Failed` 都走 `abort_upload`、`Ready` 走 `delete`（`Failed` 本质尚未
   完成上传，按 `Pending` 处理，清理后端 staging/临时段再删行，不走 `delete`/`DELETE /staging`
   以免后端找不到 staging 对象）。统一先删后端对象，再删元数据行。先后端再行（已删行对应的孤儿
@@ -279,10 +295,11 @@ bcs session file capabilities --session <sid>
 - **删除会话钩子：** `delete_session` 执行时调用
   `SessionFileService::delete_all_for_session(sid)` -> 遍历文件 ->
   逐个 `StoragePlugin::delete` -> 删行。会话**完成**不触发此钩子；完成会话的文件仍可下载。
+  **部分失败语义：单个文件后端删除失败不中断会话删除**——记录失败行（保留元数据 + 留孤儿对象）交孤儿对象对账 sweep，继续删其余文件，会话删除仍成功返回；避免 N 次顺序后端调用阻塞或半删回滚。
   v1 先同步逐个删除保正确；后续若会话文件量大可改为「先 mark `Deleting`，后台批量 + 异步 sweep」，
   与 `Deleting` 作为内部瞬态的定义一致（非 v1 阻塞）。
-- **孤儿对账：** 一个解耦的定时器（非 v1 阻塞项）清理后端孤儿对象与 `Pending` 超时的元数据行
-  （转 `Failed` + `abort_upload`）。
+- **`Pending` 超时 sweep（v1）：** 粗粒度定时器扫描 `Pending` 且 `expires_at` 已过期的元数据行，转 `Failed` + `abort_upload`，防止 abandoned 会话的 staging/临时段长期泄漏。
+- **孤儿对象对账（v1 之后）：** 解耦定时器清理后端孤儿对象（无对应元数据行的对象，如 `delete_session` 钩子中后端删除失败留下的残留），与 `Pending` 超时 sweep 解耦。
 
 ## 测试
 
@@ -296,7 +313,8 @@ bcs session file capabilities --session <sid>
   用于无 MySQL 的快速 HTTP 层测试。
 - **HTTP 层测试：** 三阶段上传（prepare/stream/complete）、`abort`/删除分流（含 `Failed`→abort
   分支）、list 分页、预签名下载 302 跳转流、delete 403/204 + 幂等 204、share 链接生成与无鉴权下载
-  （过期 → 410、删文件 → 404、`sid` 不一致 → 404）。
+  （过期 → 410、删文件 → 404、`sid` 不一致 → 404）、分段缺段 `complete` → 409、`/files/capabilities` 与 `/files/{file_id}` 路由不冲突。
+- **跨主机凭证隔离回归测试：** 预签名后端下断言 `GET .../content` 的 302 目标与 `upload_url` 直传目标 host ≠ BCS 时，`bcs-cli`/BCS HTTP 客户端发出的请求不含 `Authorization` Bearer（显式 `RedirectPolicy` 剥离，不依赖默认）。
 - baas 后端的契约/integration 测试见 `design-baas-plugin.md`。
 
 ## 分享链接（share link）
@@ -311,6 +329,8 @@ bcs session file capabilities --session <sid>
   invite/register 互相不可伪造。
 - 新增 `crates/contracts/bcs-domain/src/share.rs`（对标 `invite.rs`/`register.rs`，复制+改名）：
   ```rust
+  /// share token payload —— 仅 { version(v), file_id, exp }；不含 session_id
+  /// （file_id 全局唯一，消费端凭 file_id 查行取得 session_id 与路径 {sid} 比对）
   #[derive(Serialize, Deserialize)]
   pub struct ShareTokenPayload { pub v: u8, pub file_id: String, pub exp: u64 }
   pub fn share_token_encode(&ShareTokenPayload, secret: &[u8]) -> String;
@@ -328,7 +348,7 @@ bcs session file capabilities --session <sid>
 - **消费（`GET .../shared-file` / `.../shared-file/content?token=`）**:权限 = **无**。流程：
   `share_token_decode_and_verify` → 解出 `file_id` → 查 `bcs_session_files` 行 → 若行 `session_id` ≠
   路径 `{sid}` 返 `404`（路径混淆保护）→ 跳过会话成员鉴权 → `Ready` 校验 →
-  元信息候选端返回（**省略 `object_handle`**）；下载端复用 `GET .../content` 字节路由
+  元信息候选端返回（`object_handle` 不透出客户端，参见 API 文档通用约定）；下载端复用 `GET .../content` 字节路由
   （预签名后端 302 到 `StoragePlugin::presign_get`，**预签名 URL 有效期取 token 过期与后端 TTL 的
   更早者**；本地后端 `get_stream` 流式返回）。
 - 不新增 `StoragePlugin` 方法、不新增 DB 表，分享功能纯 token + routing。
@@ -398,8 +418,9 @@ skill，使 bot 能用 CLI 上传/下载/分享/列举会话文件，与现有 `
 
 新增到 bootstrap 配置（`config.rs`），对标现有插件配置块。**`max_size`（=`min(BCS max_file_size,
 后端 max_object_size)`）在 bootstrap 阶段计算并注入 `SessionFileService`，运行时不再动态调用
-`capabilities().max_object_size`**；除 bootstrap 外 `SessionFileService` 不应在请求路径上调用
-`capabilities()`（baas 实现会 IO），capabilities 作为构造时注入的静态值：
+`capabilities().max_object_size`**。**`capabilities()` 必须廉价、同步、无 IO**，返回构造期预计算值；
+baas 等后端的 probe 仅在插件 `async fn new()` 构造期执行，不在 `capabilities()` 内做阻塞 IO。除 bootstrap 外 `SessionFileService` 不应在请求路径上调用
+`capabilities()`，capabilities 作为构造时注入的静态值：
 
 ```toml
 [session_files]

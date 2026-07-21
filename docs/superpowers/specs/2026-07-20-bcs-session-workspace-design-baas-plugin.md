@@ -52,9 +52,9 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 | `StoragePlugin` 方法 | baas HTTP | 行为与说明 |
 |---|---|---|
 | `capabilities()` | — | `supports_presign_put = true`（**上传字节不经 BCS**，客户端直传 OSS）、`supports_presign_download = true` |
-| `prepare_upload` | `POST /upload-url`（**不带 `device_path`**；带 `filename`、`file_size`、`expire_seconds`） | baas 据 `file_size` 与 `MULTIPART_THRESHOLD`（默认 100MB）分流：`<` 返 `type:"SINGLE"` + 单个 OSS 直传 `upload_url`；`≥` 返 `type:"MULTIPART"` + `upload_session_id`/`part_size`/`parts:[{part_number, upload_url}]`。插件把 **OSS 直传 URL 放进 `PreparedUpload.client_target = Direct{...}` 交给 BCS**（BCS 原样返给客户端，客户端直传 OSS），并把 `transfer_id`/`type`/`oss_key` 等**定位信息**放进 `UploadHandle` 持久化到 `object_handle`（**不持久化短命的 per-part OSS 直传 URL**，保持行小）。 |
+| `prepare_upload` | `POST /upload-url`（**不带 `device_path`**；带 `filename`、`file_size`、`expire_seconds`、BCS 派生的 `oss_key` 作为对象 key） | baas 据 `file_size` 与 `MULTIPART_THRESHOLD`（默认 100MB）分流：`<` 返 `type:"SINGLE"` + 单个 OSS 直传 `upload_url`；`≥` 返 `type:"MULTIPART"` + `upload_session_id`/`part_size`/`parts:[{part_number, upload_url}]`。插件把 **OSS 直传 URL 放进 `PreparedUpload.client_target = Direct{...}` 交给 BCS**（BCS 原样返给客户端，客户端直传 OSS），并把 `transfer_id`/`type`/`oss_key` 等**定位信息**放进 `UploadHandle` 持久化到 `object_handle`（**不持久化短命的 per-part OSS 直传 URL**，保持行小）。`oss_key` 由 BCS 派生为 `file-transfers/{tenant}/{session_id}/{file_id}/{file_name}`，会话隔离在 key 派生层成立，不依赖 baas 自定 key。 |
 | `stream_upload` | — | **不被调用**（`supports_presign_put=true`，客户端直传 OSS，字节不经 BCS）。实现可返 `Unsupported` 或留 no-op。 |
-| `complete_upload` | `POST /upload-url/{transfer_id}/complete`（空 body）→ 轮询 `GET /transfers/{transfer_id}` 直到 `status == "DONE"` | 留存模式直接跳到 `DONE`（无 pull）。SINGLE/MULTIPART 统一空 body：MULTIPART 下 baas 自行 `list_parts` 校验组装，客户端/BCS 都无需收集 ETag。轮询间隔与超时由配置控制。返回 `StorageObjectMeta`（`size`，可选 `sha256` —— baas 通常不返回，留 `Option`）。 |
+| `complete_upload` | `POST /upload-url/{transfer_id}/complete`（空 body）→ 轮询 `GET /transfers/{transfer_id}` 直到 `status == "DONE"` | 留存模式直接跳到 `DONE`（无 pull）。SINGLE/MULTIPART 统一空 body：MULTIPART 下 baas 自行 `list_parts` 校验组装，客户端/BCS 都无需收集 ETag。轮询间隔与上限超时由配置控制，**超时 → `StorageError::Backend`（502），不无限挂起**。返回 `StorageObjectMeta`（`size`，可选 `sha256` —— baas 通常不返回，留 `Option`）。 |
 | `abort_upload` | `DELETE /upload-url/{transfer_id}` | ticket 转 `CANCELLED` 终态、OSS multipart 会话 abort（若进行中），幂等。 |
 | `presign_get` | `POST /transfers/{transfer_id}/share-link`（`expire_seconds`） | 仅 `status == "DONE"` 可调用；返回 `share_url`（OSS 预签名 GET URL），作为 BCS `GET .../content` 的 302 目标。若 ticket 非 `DONE`，baas 返 `INVALID_TRANSITION` → `StorageError::Conflict`。 |
 | `get_stream`（回退） | `share-link` → `GET share_url` → 流式返回 | `supports_presign_download = true` 时下载走 302，一般不用此方法。 |
@@ -112,7 +112,7 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 
 > **关键**：baas 签发的 OSS 直传 URL（单片 `upload_url` / 分段 `parts[].upload_url`）**不进
 > `object_handle`** —— 它们只在 prepare 的 HTTP 响应里返给客户端、由客户端直接 PUT 到 OSS
-> （`supports_presign_put=true`，字节不经 BCS，`stream_upload` 不调用）。因此即便分段 500 part，
+> （`supports_presign_put=true`，字节不经 BCS，`stream_upload` 不调用）。因此即便分段 512 part，
 > `object_handle` 仍只有几百字节（不含 N 条长签名 URL）。complete/abort 只需 `transfer_id`，
 > 不依赖那些 URL；delete 只需 `oss_key`。
 
@@ -124,7 +124,7 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 | `transfer_id` | `prepare_upload`（baas 返回） | `complete_upload`/`abort_upload`/`presign_get` | baas ticket 寻址：complete、DELETE /upload-url、share-link |
 | `type` | `prepare_upload` | complete/abort/DIAG | 记录 SINGLE vs MULTIPART 分流结果 |
 | `upload_session_id` | `prepare_upload`（仅 MULTIPART） | abort/DIAG | OSS multipart 会话管理 |
-| `oss_key` | `prepare_upload`（baas 返回或 BCS 派生） | `delete` | `DELETE /staging?key={oss_key}` 删除 OSS 对象 |
+| `oss_key` | `prepare_upload`（**BCS 派生**，含 `session_id`/`file_id`，通过 `POST /upload-url` 请求传给 baas 指定对象 key） | `delete` | `DELETE /staging?key={oss_key}` 删除 OSS 对象 |
 | `expires_at` | `prepare_upload` | BCS | prepare 返回的 `expires_at` 来源；过期后 sweep 转 `Failed` |
 
 `complete_upload` 成功后，BCS 把 `object_handle` 从 `UploadHandle`（Pending）替换为 `StorageHandle`
@@ -149,7 +149,7 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
    BCS prepare_upload:
      BCS ──POST {base_url}/upload-url {filename, file_size:5GB, expire_seconds, 无device_path}──► baas
      baas（留存模式，file_size≥阈值）:
-        data: {transfer_id, type:"MULTIPART", upload_session_id, part_size:10MB, part_count:500,
+        data: {transfer_id, type:"MULTIPART", upload_session_id, part_size:10MB, part_count:512,
                parts:[{1, upload_url:<OSS_URL_1>}, {2, upload_url:<OSS_URL_2>}, ...]}
      BCS 构造 PreparedUpload:
         client_target = Direct{ Multipart, parts:[{1,<OSS_URL_1>},{2,<OSS_URL_2>},...], part_size, part_count }
@@ -162,7 +162,7 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 2. stream（客户端直传 OSS，可并行；BCS 不参与、stream_upload 不调用）
    client ──PUT <OSS_URL_3>  ──10MB bytes──► OSS    （跨主机，客户端剥离 Authorization；OSS 签名 URL 自带 sig）
    OSS ──200──► client
-   （… client 把 500 个 part 都直接 PUT 到各自 OSS_URL_n …）
+   （… client 把 512 个 part 都直接 PUT 到各自 OSS_URL_n …）
 
 3. complete（BCS ↔ baas 完成组装）
    client ──POST /.../files/{file_id}/complete {}──► BCS
@@ -176,13 +176,14 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 
 要点：
 - **prepare 一次请求拿到所有 part 的真 OSS 直传 URL**（baas `MULTIPART` 响应一次性返 `parts[]`，见
-  baas API doc §1.1）。BCS 原样返客户端，**不存进 `object_handle`**（保持行小，即使在 multipart 500 part）。
+  baas API doc §1.1）。BCS 原样返客户端，**不存进 `object_handle`**（保持行小，即使在 multipart 512 part）。
 - **字节不经 BCS**：client→OSS 直连，一跳。BCS 不开 `PUT .../content` 接收该上传、不调 `stream_upload`、
   不缓冲字节。这是相对"BCS 代理转发"模型的根本变化（流量隔离 + BCS 无带宽压力 + object_handle 恒小）。
 - **`part_number` 仍是客户端→OSS 真直传 URL 的索引**：客户端按 prepare 响应里的 `parts[{n, upload_url}]`
   把第 n 段 PUT 到对应 `OSS_URL_n`。complete 不需要 per-part 信息（baas 自行 list_parts 组装）。
 - **baas 状态机细节封装在插件内**：`CREATED → UPLOADING → UPLOAD_COMPLETED → DONE` 的轮询、`list_parts`
   组装都在 `complete_upload` 内完成，对 `SessionFileService`/客户端不可见。
+- **complete 同步轮询的伸缩性风险（v1 已知）**：`complete_upload` 在请求路径内同步轮询 baas 直到 `DONE`，大文件 multipart 的 `list_parts` + 组装可能耗时数秒~数十秒，长占 HTTP 连接与 worker。v1 单节点可接受；轮询有配置上限超时（超时 → `StorageError::Backend`/502，不无限挂起）。后续可改为异步 complete（返回 202 + 客户端轮询文件 `status`）。
 - **abort**：任意时刻 client `DELETE` → BCS `abort_upload` 调 `DELETE /upload-url/{transfer_id}`，
   baas ticket 转 `CANCELLED`、OSS multipart 会话 abort（若进行中），随后删元数据行。
 - **前提**：客户端网络可达 OSS（baas「第四通道」前提）；仅能连 BCS 的客户端应使用 local（非 presign）后端。
@@ -208,6 +209,8 @@ baas base URL 含 `{tenant}/{bot_uuid}`。BCS 在存储插件配置中存储配�
 staging）；按会话/按上传者分配 baas bot 身份为后续扩展（需要 BCS 持有每个会话内 bot 的 baas
 凭证，本期不做）。
 
+**v1 已知风险（SPOF）**：所有会话的文件操作共享单一 baas service bot，该 bot 被吊销/限流/不可达即全部会话文件上传下载失败。v1 缓解：监控该 bot 配额与 baas 可达性（`health_check` + 告警），配置冗余/配额留余；按会话/按上传者分配 baas bot 身份延后（需 BCS 持有每个会话内 bot 的 baas 凭证）。
+
 baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不暴露给 BCS 上层或客户端。客户端
 只看到 BCS 的 `upload_url`（指向 BCS 自己），不会接触到 baas 的 OSS 直传 URL 或 share_url
 （share_url 仅在下载 302 时短暂暴露给客户端，且为自签名的 OSS URL，不含 baas 凭证）。
@@ -226,7 +229,7 @@ baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不�
 - 下载：客户端 ← OSS `share_url`（BCS 302 跳转）。
 
 这与 baas「第四通道」流量隔离原则一致，文件大流量不挤占 BCS 业务/聊天通道，BCS 无带宽/CPU 压力。
-同时因 `object_handle` 不持久化短命的 per-part OSS 直传 URL，行恒小（即便 multipart 500 part）。
+同时因 `object_handle` 不持久化短命的 per-part OSS 直传 URL，行恒小（即便 multipart 512 part）。
 
 ## 配置
 
