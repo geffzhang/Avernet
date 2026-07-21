@@ -41,19 +41,20 @@ baas 不施加 BCS 会话语义 —— BCS 才是会话维度权威，BCS 自身
 - 装配：BCS 组合根（`crates/bootstrap/bcs/server.rs`）在 `storage_backend = "baas"` 时构造
   `BaasStoragePlugin` 并以 `Arc<dyn StoragePlugin>` 注入 `SessionFileService`。
 - `backend_name()` 返回 `"baas"`；`capabilities()` 返回 `supports_presign_download = true`
-  （`max_object_size` 取 baas 硬上限或配置 probe；v1 受 BCS `max_file_size` ~100 MB 约束）。
+  （`max_object_size` 取 baas 硬上限或配置 probe；BCS `max_file_size` 控制对外 `max_size`）。
 
 ## `StoragePlugin` 方法 → baas HTTP 映射
 
 baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detail` 含 `error`/`message`）。
-下表给出每个 trait 方法的 baas 调用与行为（v1 仅 SINGLE 分片，≤100 MB；分段 v2+ 见末节）：
+下表给出每个 trait 方法的 baas 调用与行为。**单片与分段均在 v1 实现**：baas 据 `file_size` 与
+`MULTIPART_THRESHOLD`（默认 100 MB）自动分流 `type:"SINGLE"` / `type:"MULTIPART"`，插件须两者都支持。
 
 | `StoragePlugin` 方法 | baas HTTP | 行为与说明 |
 |---|---|---|
 | `capabilities()` | — | `supports_presign_download = true` |
-| `prepare_upload` | `POST /upload-url`（**不带 `device_path`**；带 `filename`、`file_size`、`expire_seconds`） | 返回 `transfer_id` + OSS 直传 `upload_url`（`type:"SINGLE"`）。构造 `UploadHandle`（见下），持久化为 `SessionFile.object_handle`。 |
-| `stream_upload`（`part_number=None`） | `PUT {oss direct-put upload_url}` 客户端字节**流式转发** | BCS 只做流式中继，不在本地全量落盘、不进内存全量缓冲。`Content-Length` 用 prepare 的 `file_size`。 |
-| `complete_upload` | `POST /upload-url/{transfer_id}/complete`（空 body）→ 轮询 `GET /transfers/{transfer_id}` 直到 `status == "DONE"` | 留存模式直接跳到 `DONE`（无 pull）。轮询间隔与超时由配置控制。返回 `StorageObjectMeta`（`size`，可选 `sha256` —— baas 通常不返回，留 `Option`）。 |
+| `prepare_upload` | `POST /upload-url`（**不带 `device_path`**；带 `filename`、`file_size`、`expire_seconds`） | 返回 `transfer_id` + OSS 直传信息。`file_size < MULTIPART_THRESHOLD`（默认 100MB）时 baas 返 `type:"SINGLE"` + 单个 `upload_url`；`≥` 阈值返 `type:"MULTIPART"` + `upload_session_id`/`part_size`/`parts:[{part_number, upload_url}]`。构造对应 `UploadHandle`（见下），持久化为 `SessionFile.object_handle`。 |
+| `stream_upload`（`part_number=None`/`Some(n)`） | `PUT {oss direct-put upload_url}` 客户端字节**流式转发** | 单片：转发到 `upload_url`；分段：`part_number=Some(n)` 转发到 `parts[n].upload_url`（可并行）。BCS 只做流式中继，不在本地全量落盘、不进内存全量缓冲。 |
+| `complete_upload` | `POST /upload-url/{transfer_id}/complete`（空 body）→ 轮询 `GET /transfers/{transfer_id}` 直到 `status == "DONE"` | 留存模式直接跳到 `DONE`（无 pull）。SINGLE/MULTIPART 统一空 body：MULTIPART 下 baas 自行 `list_parts` 校验组装，客户端无需收集 ETag。轮询间隔与超时由配置控制。返回 `StorageObjectMeta`（`size`，可选 `sha256` —— baas 通常不返回，留 `Option`）。 |
 | `abort_upload` | `DELETE /upload-url/{transfer_id}` | ticket 转 `CANCELLED` 终态，幂等。 |
 | `presign_get` | `POST /transfers/{transfer_id}/share-link`（`expire_seconds`） | 仅 `status == "DONE"` 可调用；返回 `share_url`（OSS 预签名 GET URL），作为 BCS `GET .../content` 的 302 目标。若 ticket 非 `DONE`，baas 返 `INVALID_TRANSITION` → `StorageError::Conflict`。 |
 | `get_stream`（回退） | `share-link` → `GET share_url` → 流式返回 | `supports_presign_download = true` 时下载走 302，一般不用此方法。 |
@@ -66,10 +67,24 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
 `object_handle`：
 
 ```jsonc
-// UploadHandle.backend_handle (baas, single, v1)
+// UploadHandle.backend_handle (baas, single)
 {
   "transfer_id": "a1b2c3d4...",
   "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=...",
+  "oss_key": "file-transfers/.../model.bin",
+  "expires_at": 1721466000
+}
+```
+
+```jsonc
+// UploadHandle.backend_handle (baas, multipart)
+{
+  "transfer_id": "a1b2c3d4...",
+  "upload_session_id": "oss-session-xxxxx",
+  "parts": [
+    { "part_number": 1, "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=..." },
+    { "part_number": 2, "oss_direct_put_url": "https://oss-cn-xxx.aliyuncs.com/...?Signature=..." }
+  ],
   "oss_key": "file-transfers/.../model.bin",
   "expires_at": 1721466000
 }
@@ -133,7 +148,8 @@ baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不�
 ```toml
 [session_files]
 storage_backend = "baas"
-max_file_size = 104857600       # 100 MB v1；max_size = min(max_file_size, 后端 max_object_size)
+multipart_threshold = 104857600 # 100 MB；size ≥ 自动 multipart（baas MULTIPART_THRESHOLD），< 单片
+max_file_size = 5368709120      # 5 GB v1 默认上限（baas 无硬上限）；超此值返 413。max_size = min(max_file_size, 后端 max_object_size)
 
 [session_files.baas]
 base_url = "http://{baas-host}:8890/api/v1/bots/{tenant}/{bot_uuid}/files"
@@ -159,20 +175,9 @@ health_probe_path = ""          # 可选；相对 base_url 的 health endpoint�
 - **错误映射**：表驱动测试覆盖 baas 各错误码 → `StorageError` 的映射，含 `OSS_OBJECT_NOT_FOUND→Ok`。
 - 因为 crate 独立于 BCS 仓库，其测试在插件 crate 仓库内独立运行；BCS 仓库内对 baas 路径的端到端
   验证依赖 `FakeStoragePlugin`（`bcs-storage-api` 内）注入，不强制真实 baas。
+- **分段（multipart, v1）**：契约/集成测试须覆盖 `type:"MULTIPART"` 路径 —— `prepare_upload` 拿到
+  多 part 的 `upload_url`、`stream_upload(handle, Some(n), body)` 逐 part 流式转发、`complete_upload`
+  baas `list_parts`+组装后轮询 `DONE`、`abort_upload` abort OSS 会话。与单片同套往返断言。
 
-## v2+ 分段上传（约定，非 v1）
-
-`size ≥ baas MULTIPART_THRESHOLD`（默认 100 MB，v1 由 BCS `max_file_size` 直接 `413` 拦截）时，
-`prepare_upload` 对应 baas `POST /upload-url` 返回的 `type:"MULTIPART"` 响应（含 `upload_session_id`、
-`part_size`、`parts:[{part_number, upload_url, expires_at}]`）。`UploadHandle.backend_handle` 形态：
-
-```jsonc
-{ "transfer_id": "...", "upload_session_id": "oss-session-xxxxx",
-  "parts": [{ "part_number": 1, "oss_direct_put_url": "..." }, { "part_number": 2, "oss_direct_put_url": "..." }],
-  "oss_key": "...", "expires_at": ... }
-```
-
-`stream_upload(handle, Some(n), body)` 流式转发到 `parts[n].oss_direct_put_url`；`complete_upload`
-调 `POST /upload-url/{id}/complete`（空 body，baas 自行 `list_parts` 校验组装，客户端不收集 ETag）→
-轮询 `DONE`；`abort_upload` 调 `DELETE /upload-url/{id}` 同时 abort OSS 会话。trait 已预留
-`part_number: Option<u16>`，无需破坏性改动。
+> 分段上传在 v1 即实现（见上 `prepare_upload`/`stream_upload`/`complete_upload`/`abort_upload` 行与
+> `UploadHandle` multipart 形态）。`part_number: Option<u16>` 已是 trait 签名的一部分。

@@ -4,7 +4,8 @@
 **状态：** 评审稿
 **作者：** zhangwu.zh
 **范围：** v1 — 框架（`StoragePlugin` trait + HTTP/CLI 接口 + `SessionFileService`）+ 本地文件系统
-后端（`bcs-storage-local`）；分片/大文件支持延后。baas 后端实现见独立文档
+后端（`bcs-storage-local`）；分段（multipart）上传在 v1 即支持（baas 默认 100MB 阈值自动分流，
+超 100MB 必须能传，否则 baas 后端不可用）。baas 后端实现见独立文档
 `2026-07-20-bcs-session-workspace-design-baas-plugin.md`（该插件 crate 不在当前仓库，基于本文档
 定义的 trait 接口与 baas HTTP API 实现）。
 
@@ -27,11 +28,15 @@ baas 后端的实现细节见 `2026-07-20-bcs-session-workspace-design-baas-plug
 
 ## 非目标（v1）
 
-- 超过单片 ~100 MB 的分片/切片上传（延后；trait 已预留 `part_number`，响应形态见 API 文档 §1.2.b）
 - OSS 与 NAS 后端（trait 已支持，v1 不实现）
 - baas 后端在当前仓库内的实现（见独立 baas plugin 设计文档，crate 独立于本仓库）
 - 文档约定的孤儿/TTL 清理钩子以外的内置清理器
 - 目录/层级语义（key 是扁平的，list 仅按前缀过滤）
+
+> 注：分段（multipart）上传**在 v1 即支持**（不是非目标）。单片上限 100 MB 是**分段阈值**，
+> 超过即自动走 multipart，由 `StoragePlugin` 在后端组装（baas 用 baas MULTIPART、本地按序拼接段
+> 文件）。v1 的 `max_file_size` 不再是 100 MB 硬截断，而是按后端可处理上限配置（baas 无硬上限、
+> 本地取保守上限），100 MB 仅是单片/分段的分界。
 
 ## 关键决策（brainstorming 阶段已锁定）
 
@@ -40,7 +45,7 @@ baas 后端的实现细节见 `2026-07-20-bcs-session-workspace-design-baas-plug
 | 字节流路径 | **上传一律 BCS 三阶段代理。** 客户端始终 `POST /files`(prepare)→PUT 到 BCS 给的 `upload_url`→`POST /complete`，上传链接统一由 BCS 提供、字节经 BCS；具体后端实现（本地落盘 / baas 流式转发到 OSS 直传 URL）由 `StoragePlugin` 决定，对客户端不可见。下载侧保留能力差异：预签名后端 302 直连签名 URL（字节不经 BCS），本地后端流式返回。 |
 | 删除权限 | **上传者 + 会话创建者/驱动 bot。** 文件上传者（human 上传者、上传该文件的 bot、或拥有该 bot 的 human），或会话创建者 / 该 group 的 driver bot 可删除。其余通过会话成员校验的人可上传/下载/列出。 |
 | v1 范围 | **框架 + 本地文件系统后端（本仓库内）。** baas 后端作为独立插件 crate 设计于配套文档，后续接入。OSS/NAS 延后（通过 trait 即可接入）。 |
-| 文件生命周期 | **仅在会话删除时自动清理。** 会话完成不删除文件。v1 单片上限 ~100 MB；分片延后。 |
+| 文件生命周期 | **仅在会话删除时自动清理。** 会话完成不删除文件。v1 单片/分段阈值 ~100 MB，超限自动 multipart。 |
 
 ## 架构与 crate 布局
 
@@ -124,7 +129,7 @@ pub trait StoragePlugin: Send + Sync + 'static {
 
     // --- 上传：BCS 三阶段，plugin 决定具体实现 -----------------------------
     async fn prepare_upload(&self, req: UploadPrepareRequest) -> Result<UploadHandle, StorageError>;
-    // part_number: v1 单片恒 None；v2 分段传对应编号，现以 Option 固定避免破坏性改 trait
+    // part_number: 单片恒 None；分段传对应编号（1-based）。v1 即支持分段。
     async fn stream_upload(&self, handle: &UploadHandle, part_number: Option<u16>, body: ByteStream) -> Result<(), StorageError>;
     async fn complete_upload(&self, handle: &UploadHandle) -> Result<StorageObjectMeta, StorageError>;
     async fn abort_upload(&self, handle: &UploadHandle) -> Result<(), StorageError>;
@@ -151,12 +156,15 @@ BCS 用 `get_stream` 流式返回 body。上传侧不再有客户端可见的预
 
 - `supports_presign_download = false`；`max_object_size` 取**配置项**（不以动态磁盘剩余空间
   作为静态 capability，剩余空间在 `stream_upload` 中实际校验）。
-- `prepare_upload`：开临时文件待写；`UploadHandle.backend_handle`（单片）含
-  `{ temp_path, final_path }`。`temp_path` 必须包含 `file_id`（key 中已含）并建议附加随机后缀，
-  v2 分段时各段路径含 `part_number`，保证多客户端/多 worker 同 key 并发不冲突（
-  `{data_dir}/{key}.{rand}.part` / 分段 `{data_dir}/{key}.p{part_number}.{rand}.part`）。
-- `stream_upload`：流式写入 temp 文件，校验累计 size ≤ prepare size。
-- `complete_upload`：fsync + 原子改名为终态 `final_path`，返回 `StorageObjectMeta`。
+- `prepare_upload`：单片开一个临时文件待写（`UploadHandle.backend_handle` 含
+  `{ temp_path, final_path }`）；**分段**（size ≥ 100 MB）`backend_handle` 含
+  `{ final_path, parts: [{ part_number, temp_path }] }`。`temp_path` 必须包含 `file_id`（key 中
+  已含）并附加随机后缀，分段时各段路径含 `part_number`，保证多客户端/多 worker 同 key 并发不冲突
+  （单片 `{data_dir}/{key}.{rand}.part` / 分段 `{data_dir}/{key}.p{part_number}.{rand}.part`）。
+- `stream_upload`：单片写入唯一 temp 文件；分段（`part_number=Some(n)`）写入对应 `parts[n].temp_path`，
+  校验累计 size ≤ prepare size。v1 即支持分段。
+- `complete_upload`：单片 fsync + 原子改名到 `final_path`；分段按 `part_number` 顺序拼接各段到
+  `final_path`（逐段 fsync，最后原子改名保证可见性），返回 `StorageObjectMeta`。
 - `abort_upload`：unlink temp（单片）/ 所有分片段（分段），幂等。
 - `get_stream`：打开终态文件流式返回；`presign_get` 返回 `StorageError::Unsupported`；
   `delete`：unlink 终态文件（幂等）。
@@ -203,9 +211,11 @@ baas 后端 `UploadHandle` 形态、方法→baas HTTP 映射、错误映射等�
 
 > 分享链接详情见 API 文档 §1.9。
 
-v1 强制 ~100 MB 单片上限（`size ≥` 分段阈值时直接 `413`，prepare 仅返回 `mode: "single"`）；
-分段上传（`mode: "multipart"`，prepare 一次返回所有分片 `upload_url`，由 `complete_upload`
-在后端组装）为 v2+，响应形态已约定见配套 API 文档 §1.2.b。
+v1 **分段阈值 ~100 MB**：`size < 100 MB` 走单片（`mode: "single"`），**`size ≥ 100 MB` 自动走
+分段**（`mode: "multipart"`，prepare 一次返回所有分片 `upload_url`，由 `complete_upload` 在后端
+组装：baas 用 baas MULTIPART `list_parts` + 组装、本地按 `part_number` 顺序拼接段文件）。v1 即
+支持分段（baas 默认 100MB 阈值自动分流，超 100MB 必须可传）。`max_file_size` 不再是 100MB 硬截断，
+而是按后端可处理上限配置（详见配置）；超 `max_size` 才 `413`。响应形态见 API 文档 §1.2.a/§1.2.b。
 
 ## 对外 CLI API
 
@@ -334,7 +344,9 @@ bcs session file capabilities --session <sid>
 ```toml
 [session_files]
 storage_backend = "local"       # "local"（v1 默认）| "baas"
-max_file_size = 104857600       # 100 MB v1；max_size = min(max_file_size, 后端 max_object_size)
+multipart_threshold = 104857600 # 100 MB；size ≥ 此值自动 multipart，< 此值单片。对标 baas MULTIPART_THRESHOLD
+max_file_size = 5368709120      # 5 GB v1 默认上限；baas 无硬上限、本地取保守上限；超此值返 413
+# 对外 capabilities.max_size = min(max_file_size, 后端 capabilities().max_object_size)，bootstrap 阶段静态化
 data_dir = "/var/bcs/session-files"   # local only；可为相对路径或由启动脚本解析 $BCS_DATA_DIR
 # storage_backend = "baas" 时见 design-baas-plugin.md 的 [session_files.baas] 配置块
 

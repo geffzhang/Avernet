@@ -76,7 +76,7 @@ HTTP 状态码跟随错误码（见各端点说明）。通用错误码：
 | `SESSION_NOT_FOUND` | 404 | `sid` 不存在 |
 | `FILE_NOT_FOUND` | 404 | 当前会话下 `file_id` 不存在 |
 | `INVALID_TRANSITION` | 409 | 生命周期**转换动作**（upload/complete/abort/delete）在当前状态下不合法：对非 `Pending` 文件重复 PUT、对已 complete/cancel 的文件再 complete、`complete` 时字节尚未上传等 |
-| `PAYLOAD_TOO_LARGE` | 413 | 超过 `max_size`（= min(BCS `max_file_size` 配置, 后端 `max_object_size`)，bootstrap 阶段静态化，v1 ~100 MB） |
+| `PAYLOAD_TOO_LARGE` | 413 | 超过 `max_size`（= min(BCS `max_file_size` 配置, 后端 `max_object_size`)，bootstrap 阶段静态化）。注意 100MB 仅是单片/分段阈值，超 100MB 走分段而非 413；仅超 `max_size` 才 413 |
 | `INVALID_STATE` | 422 | 资源状态不满足**读取/下载**前提：如对非 `Ready` 文件执行 `GET .../content` |
 | `UNSUPPORTED_BACKEND` | 501 | 后端不支持所请求能力（如本地后端的 `presign_get` 下载预签名） |
 | `STORAGE_BACKEND` | 500/502 | 后端操作失败（不泄漏后端内部信息） |
@@ -105,6 +105,7 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 - `presign_download=false`（如本地后端）：`GET .../content` 由 BCS 流式返回 body。
 - `max_size` = min(BCS `max_file_size` 配置, 后端 `capabilities().max_object_size`)，在 bootstrap
   阶段计算并注入 `SessionFileService`，运行时不再动态调用 `capabilities()`（baas `capabilities()` 会 IO）。
+  注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
 
 ## 1.2 发起上传（prepare） — `POST /sessions/{sid}/files`
 
@@ -122,7 +123,7 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 `size` 是权威值，后端据此在单片与分段间自动分流（阈值由后端 `capabilities().max_object_size`
 与分段阈值决定，对标 baas 的 `MULTIPART_THRESHOLD`，默认 100 MB）。客户端无需选择模式。
 
-### 1.2.a 单片上传（`size` < 分段阈值，**v1 默认路径**）
+### 1.2.a 单片上传（`size` < 分段阈值）
 
 **响应 201：**
 ```json
@@ -137,10 +138,10 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 
 客户端一次 PUT 全部字节到 `upload_url`，再调 `complete`。
 
-### 1.2.b 分段上传（`size` ≥ 分段阈值，**v2+；v1 单片上限内不会出现**）
+### 1.2.b 分段上传（`size` ≥ 分段阈值，**v1 即支持**）
 
-> v1 强制 ~100 MB 单片上限，prepare 不会返回分段响应；超限直接 `413`。
-> 以下为 v2+ 大文件分段形态，与 baas `MULTIPART` 响应对齐，此处先约定。
+> `size ≥ multipart_threshold`（默认 100 MB，对标 baas `MULTIPART_THRESHOLD`）时自动走分段，
+> v1 即实现（baas 默认 100MB 阈值自动分流，超 100MB 必须可传）。
 
 **响应 201：**
 ```json
@@ -172,14 +173,15 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 超时未 `complete` 的 `Pending` 文件由后台 sweep 转为 `Failed` 并 `abort_upload` 清理后端，v1 由 sweep
 兜底（非 v1 阻塞）；`Failed` 后再 `complete` 收到 `INVALID_TRANSITION`（409），客户端可 `DELETE` 清理重传。
 
-**错误：** 超 `max_size` 前置校验拒返 `413 PAYLOAD_TOO_LARGE`；非参与者返 `403 FORBIDDEN`。
+**错误：** 超 `max_size` 前置校验拒返 `413 PAYLOAD_TOO_LARGE`（`max_size` = min(`max_file_size`,
+后端硬上限)，**不是** 100MB 截断 —— 100MB 仅是单片/分段阈值，超 100MB 走分段而非拒绝）；非参与者返 `403 FORBIDDEN`。
 
 ## 1.3 上传字节 — `PUT /sessions/{sid}/files/{file_id}/content`
 
 三阶段第二步。客户端把原始字节 PUT 到 1.2 返回的 `upload_url`（即本端点）。BCS 流式接收并
 交给 `StoragePlugin::stream_upload`：本地直接落盘到临时文件；baas 把字节**流式转发**到 baas
 签发的 OSS 直传 URL。BCS 不在内存/磁盘全量持有文件。单片上传时 `part_number = None`；
-v2 分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stream_upload`，各分片独立落盘/
+分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stream_upload`，各分片独立落盘/
 转发，最后由 `complete_upload` 在后端组装。
 
 与下载端点 `GET /sessions/{sid}/files/{file_id}/content` 同路径、不同方法。
@@ -492,8 +494,7 @@ pub trait StoragePlugin: Send + Sync + 'static {
     /// (PUT) the bytes to the OSS direct-put URL issued in prepare_upload —
     /// BCS never buffers the whole file.
     ///
-    /// `part_number`: v1 单片上传恒为 `None`；v2 分段上传传对应分片编号（1-based）。
-    /// 现在就以 `Option` 形式固定在签名里，避免后续为支持 multipart 而破坏性改 trait。
+    /// `part_number`: 单片上传传 `None`；分段上传传对应分片编号（1-based）。v1 即支持分段。
     async fn stream_upload(
         &self,
         handle: &UploadHandle,
@@ -560,9 +561,9 @@ pub struct UploadHandle {
     pub backend: &'static str,
     pub key: String,
     // local (single): { temp_path, final_path }
-    // local (multipart, v2): { final_path, parts: [{ part_number, temp_path }] }
+    // local (multipart): { final_path, parts: [{ part_number, temp_path }] }
     // baas (single):  { transfer_id, oss_direct_put_url, oss_key, expires_at }
-    // baas (multipart, v2): { transfer_id, parts: [{ part_number, oss_direct_put_url }], oss_key, upload_session_id, expires_at }
+    // baas (multipart): { transfer_id, parts: [{ part_number, oss_direct_put_url }], oss_key, upload_session_id, expires_at }
     pub backend_handle: serde_json::Value,
     pub expires_at: u64,
 }
@@ -624,8 +625,8 @@ pub enum StorageError {
 每个 `StoragePlugin` 实现须通过同一套用例（对标 `bcs-test-support`）：
 - `prepare_upload` -> `stream_upload(handle, None /* part_number */, 已知字节)` -> `complete_upload`
   得到一个 `Ready` 对象，其 `StorageObjectMeta.size` 与输入一致
-- v2 分段契约（v1 跳过）：`stream_upload(handle, Some(n), part_bytes)` 多次 -> `complete_upload`
-  在后端按序组装，往返原始字节
+- 分段契约（v1）：`stream_upload(handle, Some(n), part_bytes)` 多次 -> `complete_upload`
+  在后端按序组装，往返原始字节（与单片同套测试，仅 size ≥ 阈值）
 - `complete_upload` 后 `get_stream`（或 `supports_presign_download` 时 `presign_get` + GET）
   能往返原始字节
 - `abort_upload`（在 `complete_upload` 之前）使对象不存在，后续 `delete`/`get_stream` 返回
@@ -653,13 +654,16 @@ pub enum StorageError {
   `max_file_size` 或合理上限），不以磁盘剩余空间作为静态 capability（剩余空间动态变化无法在启动时
   固定）；`stream_upload` 中再实际校验磁盘可用空间，不足返 `StorageError::Backend`。
 - key 映射到 `$BCS_DATA_DIR/session-files/...`（或配置的 `data_dir`）下的文件。
-- `prepare_upload`：开临时文件待写；`UploadHandle.backend_handle`（单片）含
-  `{ temp_path, final_path }`。**`temp_path` 必须包含 `file_id`（key 中已含）并建议附加随机后缀**，
-  v2 分段时各段路径含 `part_number`，保证多客户端/多 worker 同 key 并发不冲突（
-  `{data_dir}/{key}.{rand}.part` / 分段 `{data_dir}/{key}.p{part_number}.{rand}.part`）。
-- `stream_upload`：流式写入 temp 文件，校验累计 size ≤ prepare size。
-- `complete_upload`：fsync + 原子改名为终态 `final_path`，返回 `StorageObjectMeta`。
-- `abort_upload`：unlink temp（幂等）。
+- `prepare_upload`：单片开一个临时文件（`backend_handle` 含 `{ temp_path, final_path }`）；
+  **分段**（size ≥ 阈值）`backend_handle` 含 `{ final_path, parts: [{ part_number, temp_path }] }`。
+  **`temp_path` 必须包含 `file_id`（key 中已含）并附加随机后缀**，分段时各段路径含 `part_number`，
+  保证多客户端/多 worker 同 key 并发不冲突（单片 `{data_dir}/{key}.{rand}.part` /
+  分段 `{data_dir}/{key}.p{part_number}.{rand}.part`）。v1 即支持分段。
+- `stream_upload`：单片写入唯一 temp 文件；分段（`part_number=Some(n)`）写入对应段文件，校验
+  累计 size ≤ prepare size。
+- `complete_upload`：单片 fsync + 原子改名到 `final_path`；分段按 `part_number` 顺序拼接各段到
+  `final_path`（逐段 fsync，最后原子改名），返回 `StorageObjectMeta`。
+- `abort_upload`：unlink temp（单片）/ 所有分片段（分段），幂等。
 - `get_stream`：打开终态文件流式返回；`presign_get` 返回 `StorageError::Unsupported`；
   `delete`：unlink 终态文件（幂等）。
 - 用于开发、测试和单节点部署。
@@ -672,20 +676,21 @@ baas 后端实现见 **`2026-07-20-bcs-session-workspace-design-baas-plugin.md`*
 
 - `backend_name` = `"baas"`；`capabilities().supports_presign_download = true`。
 - 上传走 baas **留存模式**（`POST /upload-url` 不带 `device_path`）：`prepare_upload` 取 OSS 直传
-  URL + `transfer_id`；`stream_upload` 流式转发 PUT 到该 OSS 直传 URL（v2 分段用
-  `parts[n].oss_direct_put_url`）；`complete_upload` 调 `complete` + 轮询 `DONE`；`abort_upload`
-  调 `DELETE /upload-url/{id}`。
+  URL + `transfer_id`（单片 `type:"SINGLE"`，分段 `type:"MULTIPART"`，baas 据 `file_size` 与
+  `MULTIPART_THRESHOLD` 自动分流）；`stream_upload` 流式转发 PUT 到 OSS 直传 URL（单片用
+  `oss_direct_put_url`，分段用 `parts[n].oss_direct_put_url`）；`complete_upload` 调 `complete` +
+  轮询 `DONE`（分段 baas 自行 `list_parts` 组装）；`abort_upload` 调 `DELETE /upload-url/{id}`。
 - 下载：`presign_get` 调 `POST /transfers/{id}/share-link` 取 `share_url`，BCS `GET .../content` 302 到它。
 - `delete`（`Ready`）调 `DELETE /staging?key={oss key}`，`404 OSS_OBJECT_NOT_FOUND` 映射为 `Ok`（幂等）。
 - `health_check` 仅探测 baas base_url 可达性，不依赖真实 `transfer_id`。
 - 会话隔离：`oss_key` 由 BCS 派生、含 `session_id`/`file_id`，不同会话对象路径天然隔离；BCS 列表
   权威来自自身 DB（不用 `GET /staging`），共享同一 service bot 不影响会话隔离性。
-- 错误映射、`UploadHandle`/`StorageHandle` 形态、身份/租户、配置、测试、v2 分段细节均见 baas 插件文档。
+- 错误映射、`UploadHandle`/`StorageHandle` 形态、身份/租户、配置、测试、分段细节均见 baas 插件文档。
 
 ## 3.3 未来后端（trait 就绪，v2+）
 
 - `bcs-storage-oss`：`supports_presign_download = true`；`prepare_upload` 发 OSS 直传 URL
-  （单片），大文件 v2 走 multipart init 并在 `stream_upload`/`complete_upload` 编排分片；
+  （单片），大文件走 multipart init 并在 `stream_upload`/`complete_upload` 编排分片；
   `delete` 删对象；`list` 不使用（BCS 从 DB 列）。
 - `bcs-storage-nas`：`supports_presign_download = false`；通过挂载的 NFS 路径流式，对标
   `bcs-storage-local`（temp + rename）。
