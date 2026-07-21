@@ -214,7 +214,7 @@ use sha2::Sha256;
 
 type HmacSha256 = Hmac<Sha256>;
 
-pub fn encode(payload: &ShareTokenPayload, secret: &[u8]) -> String {
+pub fn share_token_encode(payload: &ShareTokenPayload, secret: &[u8]) -> String {
     let payload_bytes =
         serde_json::to_vec(payload).expect("ShareTokenPayload is always serializable");
     let mut mac = HmacSha256::new_from_slice(secret).expect("HMAC accepts any key length");
@@ -226,11 +226,11 @@ pub fn encode(payload: &ShareTokenPayload, secret: &[u8]) -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(&combined)
 }
 
-pub fn decode_and_verify(
+pub fn share_token_decode_and_verify(
     token: &str,
     secret: &[u8],
 ) -> Result<ShareTokenPayload, ShareTokenError> {
-    let payload = decode_and_verify_no_expiry(token, secret)?;
+    let payload = share_token_decode_and_verify_no_expiry(token, secret)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -241,7 +241,7 @@ pub fn decode_and_verify(
     Ok(payload)
 }
 
-fn decode_and_verify_no_expiry(
+fn share_token_decode_and_verify_no_expiry(
     token: &str,
     secret: &[u8],
 ) -> Result<ShareTokenPayload, ShareTokenError> {
@@ -334,12 +334,16 @@ pub fn new_file_id() -> String {
 
 - [ ] **Step 8: re-export**
 
-`crates/contracts/bcs-domain/src/lib.rs`：在 `pub use actor::{ActorKind, ActorStatus, ...};` 行追加 `ActorRef`；并在 invite/register re-export 旁加 share：
+`crates/contracts/bcs-domain/src/lib.rs`：在现有 `pub use actor::{ActorKind, ...};` 行追加 `ActorRef`；并在 invite/register re-export 旁加 share。
+
+> **执行期前置 grep**：`actor.rs` 现有 re-export 列表的实际符号未知 —— 先 `grep -n "pub use actor" crates/contracts/bcs-domain/src/lib.rs` 取真实列表，**在该列表后追加 `ActorRef`**，不要臆造 `ActorStatus`/`EnsureHumanResult`/`EnsureOwnerEdgesResult`/`RelationEdge` 等未必存在的符号（若它们不存在会导致编译失败）。
 
 ```rust
-pub use actor::{ActorKind, ActorRef, ActorStatus, EnsureHumanResult, EnsureOwnerEdgesResult, RelationEdge};
+// 形如（以 grep 结果为准；仅新增 ActorRef 与 session_file、share 两行）：
+pub use actor::{ActorKind, ActorRef /* 其余按现有列表保留 */};
 pub use session_file::{FileStatus, SessionFile, new_file_id};
-pub use share::{ShareTokenError, ShareTokenPayload, decode_and_verify as share_token_decode_and_verify, encode as share_token_encode};
+// 函数在 share.rs 已命名为 share_token_encode / share_token_decode_and_verify，直接 re-export，无需 `as` 别名：
+pub use share::{ShareTokenError, ShareTokenPayload, share_token_decode_and_verify, share_token_encode};
 ```
 
 - [ ] **Step 9: 编译 + 全量 domain 测试**
@@ -463,7 +467,7 @@ git commit -m "feat(bcs): migration 006 bcs_session_files (mysql + sqlite parity
 - Create: `crates/plugin-api/bcs-storage-api/Cargo.toml`
 - Create: `crates/plugin-api/bcs-storage-api/src/lib.rs`（trait + 类型 + 错误）
 - Create: `crates/plugin-api/bcs-storage-api/src/fake.rs`（`FakeStoragePlugin`）
-- Create: `crates/plugin-api/bcs-storage-api/src/contract.rs`（契约测试套件，`pub fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, caps_expected: StorageCapabilities)`）
+- Create: `crates/plugin-api/bcs-storage-api/src/contract.rs`（契约测试套件，`pub async fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, caps_expected: StorageCapabilities)`，由各后端 crate 在 `#[tokio::test]` 内 `.await`）
 - Modify: `Cargo.toml`（workspace members + `bcs-storage-api = { path = ... }` workspace dep）
 
 **Interfaces:**
@@ -882,7 +886,7 @@ Expected: 初次可能因 `contract.rs` 缺失报错 —— 先在 Step 4 创建
 
 - [ ] **Step 4: 写契约测试套件 `contract.rs`**
 
-契约套件以 trait 方法 `pub fn assert_storage_plugin_conforms(plugin, caps)` 暴露，每个后端 crate（Task 7 local）调用它。它复用 spec §3 契约列表。因 trait 方法对 `ByteStream` 入参，套件用 fake-assist bytes 构造流。完整实现（对 presign 与 proxy 两类后端分支断言）：
+契约套件以 **`pub async fn assert_storage_plugin_conforms(plugin, caps)`** 暴露，每个后端 crate（Task 7 local）在自己的 `#[tokio::test]` 内 `.await` 它。它复用 spec §3 契约列表。因 trait 方法对 `ByteStream` 入参，套件用 fake-assist bytes 构造流。**采用 async 签名（而非内部 `tokio::runtime::Runtime::new().block_on`）的原因**：`contract.rs` 是 `pub`（非 `#[cfg(test)]`）模块，若内部调用 `tokio::runtime` 则需 `tokio` 进入正式 `[dependencies]`；改 async 后 `tokio` 只留在 `[dev-dependencies]`，crate 保持轻。完整实现（对 presign 与 proxy 两类后端分支断言）：
 
 ```rust
 //! Shared contract suite for any `StoragePlugin`. Each backend crate calls
@@ -909,11 +913,9 @@ impl futures::Stream for VecStream {
 impl ByteStreamTrait for VecStream {}
 fn stream_of(b: Bytes) -> ByteStream { Box::new(VecStream(vec![b].into_iter())) }
 
-pub fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, expected_caps: StorageCapabilities) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async move {
-        assert_eq!(plugin.capabilities(), expected_caps);
-        assert!(!plugin.backend_name().is_empty());
+pub async fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, expected_caps: StorageCapabilities) {
+    assert_eq!(plugin.capabilities(), expected_caps);
+    assert!(!plugin.backend_name().is_empty());
 
         let key = format!("contract-{}", line!());
         let req = UploadPrepareRequest {
@@ -922,30 +924,29 @@ pub fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, expected_c
         };
         let prep = plugin.prepare_upload(req).await.unwrap();
 
-        let payload = Bytes::from_static(b"hello");
-        match &prep.client_target {
+    let payload = Bytes::from_static(b"hello");
+    match &prep.client_target {
             ClientUploadTarget::ProxyViaBcs => {
                 plugin.stream_upload(&prep.handle, None, stream_of(payload.clone())).await.unwrap();
             }
-            ClientUploadTarget::Direct { .. } => {
-                // presign_put backend: bytes bypass BCS; emulate by staging directly.
-                plugin.stream_upload(&prep.handle, None, stream_of(payload.clone())).await.unwrap();
-            }
+        ClientUploadTarget::Direct { .. } => {
+            // presign_put backend: bytes bypass BCS; emulate by staging directly.
+            plugin.stream_upload(&prep.handle, None, stream_of(payload.clone())).await.unwrap();
         }
-        let meta = plugin.complete_upload(&prep.handle).await.unwrap();
-        assert_eq!(meta.size, payload.len() as u64);
+    }
+    let meta = plugin.complete_upload(&prep.handle).await.unwrap();
+    assert_eq!(meta.size, payload.len() as u64);
 
-        let h = StorageHandle { backend: prep.handle.backend, key: key.clone(), backend_handle: serde_json::Value::Null };
-        let mut s = plugin.get_stream(&h).await.unwrap();
-        let mut got = Vec::new();
-        while let Some(c) = s.next().await { got.extend_from_slice(&c.unwrap()); }
-        assert_eq!(got, payload.as_ref());
+    let h = StorageHandle { backend: prep.handle.backend, key: key.clone(), backend_handle: serde_json::Value::Null };
+    let mut s = plugin.get_stream(&h).await.unwrap();
+    let mut got = Vec::new();
+    while let Some(c) = s.next().await { got.extend_from_slice(&c.unwrap()); }
+    assert_eq!(got, payload.as_ref());
 
-        // delete idempotent + makes NotFound
-        plugin.delete(&h).await.unwrap();
-        plugin.delete(&h).await.unwrap();
-        assert!(matches!(plugin.get_stream(&h).await, Err(StorageError::NotFound)));
-    });
+    // delete idempotent + makes NotFound
+    plugin.delete(&h).await.unwrap();
+    plugin.delete(&h).await.unwrap();
+    assert!(matches!(plugin.get_stream(&h).await, Err(StorageError::NotFound)));
 }
 ```
 
@@ -1060,7 +1061,9 @@ pub trait SessionFileRepoPort: Send + Sync {
 
 - [ ] **Step 2: 写应用层错误类型 + 命令/结果类型**
 
-Create `crates/service-api/bcs-service-api/src/application/session_files.rs` 先放错误与 DTO：
+Create `crates/service-api/bcs-service-api/src/application/session_files.rs` 先放错误与 DTO。
+
+> **执行期前置（必做）**：本文件引用 `bcs_storage_api::{ByteStream, PresignGetTicket, ...}`，需先把 `bcs-storage-api` 依赖加入本 crate 的 `Cargo.toml`（正式 `[dependencies]`）—— 见 Step 4 的依赖修改。**先做 Step 4 的 Cargo.toml 依赖加入，再写本文件**，否则中途 `cargo check` 会因 crate 未解析失败。
 
 ```rust
 //! Session file workspace application service trait.
@@ -1069,7 +1072,9 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use bcs_domain::{ActorRef, SessionFile, ShareTokenError};
-use bcs_service_api_internal_exports::*; // 见下，避免；实际按需 import
+// NOTE: 不要写 `use bcs_service_api_internal_exports::*;`（该 crate 不存在）。按编译器提示
+// 显式 import 真实符号；本文件需要 `crate::port::repo::{...}` 与 `crate::{ServiceError, ServiceResult}`
+// 以及 `bcs_storage_api::{ByteStream, PresignGetTicket}`（后者在 Step 4 依赖加入后可用）。
 use crate::port::repo::{NewSessionFileParams, SessionFileListPage, SessionFileListParams};
 use crate::{ServiceError, ServiceResult};
 
@@ -1666,7 +1671,7 @@ git commit -m "feat(bcs-session-file-store): memory + mysql SessionFileRepoPort 
 - Modify: `Cargo.toml`（members + `bcs-session-file` workspace dep）
 
 **Interfaces:**
-- Produces：`SessionFileServiceImpl` + `SessionFileServiceConfig { storage: Arc<dyn StoragePlugin>, repo: Arc<dyn SessionFileRepoPort>, session_repo: Arc<dyn SessionRepoPort>, max_size: u64, multipart_threshold: u64, bcs_base_url: String, share_secret: Vec<u8>, share_default_ttl: u64, share_base_url: Option<String> }`、构造 `SessionFileServiceImpl::new(cfg) -> Self`
+- Produces：`SessionFileServiceImpl` + `SessionFileServiceConfig { storage: Arc<dyn StoragePlugin>, repo: Arc<dyn SessionFileRepoPort>, session_repo: Arc<dyn SessionRepoPort>, env: String, max_size: u64, multipart_threshold: u64, bcs_base_url: String, share_secret: Vec<u8>, share_default_ttl: u64, share_base_url: Option<String> }`、构造 `SessionFileServiceImpl::new(cfg) -> Self`。`env` 用于 object key 派生（`derive_key(env, ...)`），须与 DB 行 `env` 列（`MySqlSessionFileStore.env`）一致，故由 bootstrap 注入与 repo 同一 env。
 - Consumes: Task 1/3/4/5
 
 - [ ] **Step 1: Cargo.toml**
@@ -1708,44 +1713,37 @@ workspace = true
 
 ```rust
 use bcs_domain::ActorRef;
-use bcs_service_api::port::repo::SessionRepoPort;
 
 /// key = session-files/{env}/{session_id}/{file_id}/{file_name}
+/// `env` 取自 `SessionFileServiceConfig.env`（见 Step 5），与 DB 行 `env` 列一致。
 pub fn derive_key(env: &str, session_id: &str, file_id: &str, file_name: &str) -> String {
     format!("session-files/{env}/{session_id}/{file_id}/{file_name}")
 }
 
-/// Test whether `caller` may mutate (delete/share) a file owned by `owner`,
-/// when `caller` is also the session creator or owns the group driver bot.
-pub async fn can_mutate(
-    session_repo: &dyn SessionRepoPort,
-    caller: &ActorRef,
+/// Test whether `caller` may mutate (delete/share) a file owned by `owner`.
+///
+/// 鉴权分工：service 层做纯判断（caller 是否含 owner / session creator / driver bot 身份）；
+/// "human 拥有 driver bot" 需要 bot registry（HTTP 层已有 `list_bots_by_creator`）。为避免
+/// service 依赖 registry，HTTP handler（Task 8）先把 `caller_identities` 解析好传入 ——
+/// `caller_identities = [caller.actor_id] + 其拥有的 bot_uuid 列表`，并预先解析 `session_creator`
+/// 与 `driver_bot`（均按 actor_id 比对）。service 不再持有 `SessionRepoPort` 用于鉴权（故本 helper
+/// 不再依赖 `SessionRepoPort`，纯同步函数）。
+pub fn can_mutate(
+    caller_identities: &[String],
     owner: &ActorRef,
     session_creator: Option<&str>,
     driver_bot: Option<&str>,
 ) -> bool {
-    // uploader self
-    if caller.actor_id == owner.actor_id { return true; }
-    // session creator
-    if let Some(c) = session_creator { if c == caller.actor_id { return true; } }
-    // driver bot (caller is the driver bot, or human owning it — simplified: caller.actor_id matches driver)
-    if let Some(d) = driver_bot { if d == caller.actor_id { return true; } }
-    let _ = session_repo; // (full driver-ownership lookup done in HTTP layer via registry; service trusts precomputed)
-    false
-}
-```
-
-> **鉴权分工**：service 层做"caller == owner / caller == session 创建者"的纯判断；"human 拥有 driver bot"需要 bot registry（HTTP 层已有 `list_bots_by_creator`）。为避免 service 依赖 registry，HTTP handler 先把 `session_creator`/`driver_bot`/caller-owned-bot-ids 解析好传入。**修正 trait**：把 `can_mutate` 改为接受已解析的 `caller_identities: &[String]`（caller.actor_id + 其拥有的 bot_uuid 列表）：
-
-```rust
-pub fn can_mutate(caller_identities: &[String], owner: &ActorRef, session_creator: Option<&str>, driver_bot: Option<&str>) -> bool {
     if caller_identities.iter().any(|id| id == &owner.actor_id) { return true; }
     if let Some(c) = session_creator { if caller_identities.iter().any(|id| id == c) { return true; } }
     if let Some(d) = driver_bot { if caller_identities.iter().any(|id| id == d) { return true; } }
     false
 }
 ```
-（service 用此版；HTTP 层 Task 8 负责 `caller_identities` 收集。）因此 `DeleteFileCommand`/`ShareMintCommand` 需带 `caller_identities: Vec<String>` —— **回头修订 Task 4 DTO**：在 `DeleteFileCommand` 与 `ShareMintCommand` 各加 `pub caller_identities: Vec<String>` 字段。
+
+> **配套 DTO（必须）**：`DeleteFileCommand` 与 `ShareMintCommand` 需带 `pub caller_identities: Vec<String>` 字段 —— 在 Task 4 Step 2 定义这两个 DTO 时**即带上该字段**（不要后置补丁）。HTTP 层（Task 8）`caller_identities(state, caller)` helper 负责收集（见 Task 8 Step 2）。
+>
+> **配套：`session_creator`/`driver_bot` 的解析**同样由 HTTP 层完成。`SessionFileService` 的 `delete_file`/`share_mint` trait 方法需在 command 里携带这俩判定值，或在 handler 内预检。**推荐**：在 `delete_file`/`share_mint` 内部仅依据 `caller_identities` 判 owner；"creator/driver" 两条额外放行由 HTTP 层在调用 service 前先用 caller_identities 调一次 `can_mutate` 短路（避免 service 需 session_repo 查 creator）。具体落字见 Step 5 实现。
 
 - [ ] **Step 3: 写 `prepare_upload` 测试（失败）**
 
@@ -1771,6 +1769,7 @@ mod tests {
         let session_repo: Arc<dyn SessionRepoPort> = Arc::new(/* 测试用 fake，见 bcs-test-support 或本 crate内建简易 stub */);
         let cfg = SessionFileServiceConfig {
             storage: storage.clone(), repo: repo.clone(), session_repo,
+            env: "test".into(), // 须与 MemorySessionFileRepo 的 env 一致（memory repo 当前不按 env 过滤，测试仍应填占位以对齐契约）
             max_size: 5_000_000_000, multipart_threshold: 100*1024*1024,
             bcs_base_url: "http://bcs:21000".into(),
             share_secret: b"k".to_vec(), share_default_ttl: 3600, share_base_url: None,
@@ -1822,6 +1821,7 @@ pub struct SessionFileServiceConfig {
     pub storage: Arc<dyn bcs_storage_api::StoragePlugin>,
     pub repo: Arc<dyn SessionFileRepoPort>,
     pub session_repo: Arc<dyn SessionRepoPort>,
+    pub env: String, // 与 repo 的 env 一致；用于 object key 派生（derive_key(env, ...)）
     pub max_size: u64,
     pub multipart_threshold: u64,
     pub bcs_base_url: String,
@@ -1878,7 +1878,7 @@ impl SessionFileService for SessionFileServiceImpl {
             .ok_or_else(|| SessionFileUseCaseError::NotFound(format!("session {}", cmd.session_id)))?;
 
         let file_id = new_file_id();
-        let key = derive_key("prod", &cmd.session_id, &file_id, &cmd.file_name); // env from cfg ideally
+        let key = derive_key(&self.cfg.env, &cmd.session_id, &file_id, &cmd.file_name);
         let req = UploadPrepareRequest {
             key: key.clone(), file_name: cmd.file_name.clone(), mime_type: cmd.mime_type.clone(),
             size: cmd.size, ttl_secs: 300,
@@ -1893,18 +1893,17 @@ impl SessionFileService for SessionFileServiceImpl {
             object_handle: handle_json, expires_at: prepared.expires_at,
         }).await.map_err(SessionFileUseCaseError::Internal)?;
 
-        let client_target_json = self.wire_client_target(&cmd.session_id, &file_id, &prepared);
+        let client_target_json = self.wire_client_target(&cmd.session_id, &file_id, cmd.size, &prepared);
         Ok(PrepareUploadResult { file: row, client_target_json, expires_at: prepared.expires_at })
     }
 }
 ```
 
-`wire_client_target`（把 `PreparedUpload.client_target` 翻译成 §1.2.a/§1.2.b 响应 JSON，**对 local 把 ProxyViaBcs 合成 BCS 代理 URL**）：
+`wire_client_target(&self, sid, file_id, size, prepared)`（把 `PreparedUpload.client_target` 翻译成 §1.2.a/§1.2.b 响应 JSON；**对 local `ProxyViaBcs` 据 `size` 与 `multipart_threshold` 自决单片/分段并合成 BCS 代理 URL**）。签名带 `size: u64`（取自 `cmd.size`，避免从 `object_handle` 反解 size）：
 
 ```rust
 impl SessionFileServiceImpl {
-    fn wire_client_target(&self, sid: &str, file_id: &str, prepared: &PreparedUpload) -> serde_json::Value {
-        let mode_field = |m: UploadMode| match m { UploadMode::Single => "single", UploadMode::Multipart => "multipart" };
+    fn wire_client_target(&self, sid: &str, file_id: &str, size: u64, prepared: &PreparedUpload) -> serde_json::Value {
         match &prepared.client_target {
             ClientUploadTarget::Direct { mode, url, parts, part_size, part_count } => {
                 match mode {
@@ -1925,38 +1924,37 @@ impl SessionFileServiceImpl {
                 }
             }
             ClientUploadTarget::ProxyViaBcs => {
-                // We don't know single vs multipart here without the backend telling us.
-                // Local backend prepares according to size; service decides by threshold.
-                serde_json::json!({
-                    "mode": "single",
-                    "upload_url": self.bcs_proxy_upload_url(sid, file_id),
-                    "method": "PUT",
-                    "expires_at": prepared.expires_at,
-                })
+                // local proxy: no direct URL. Service decides single vs multipart by
+                // size vs multipart_threshold, synthesizing BCS proxy URLs.
+                // part_size 固定取 local 上传分片大小（10 MB），part_count = ceil(size/part_size)。
+                let part_size: u64 = 10 * 1024 * 1024;
+                if size >= self.cfg.multipart_threshold {
+                    let part_count: u32 = ((size + part_size - 1) / part_size) as u32;
+                    // part_count ≤ 65535 (u16)：超限在 prepare_upload 前置校验已是 413，此处断言防御。
+                    assert!(part_count <= 65535, "part_count overflow — prepare should have rejected");
+                    let parts: Vec<_> = (1..=part_count as u16).map(|n| serde_json::json!({
+                        "part_number": n, "upload_url": self.bcs_proxy_upload_url_part(sid, file_id, n)
+                    })).collect();
+                    serde_json::json!({
+                        "mode": "multipart", "method": "PUT",
+                        "part_size": part_size, "part_count": part_count,
+                        "expires_at": prepared.expires_at, "parts": parts,
+                    })
+                } else {
+                    serde_json::json!({
+                        "mode": "single",
+                        "upload_url": self.bcs_proxy_upload_url(sid, file_id),
+                        "method": "PUT",
+                        "expires_at": prepared.expires_at,
+                    })
+                }
             }
         }
     }
 }
 ```
 
-> **multipart 在 local（ProxyViaBcs）下的处理**：local 后端 prepare 时已知 `size`，应自行决定单片/分段并在 `client_target` 里**也**回 `Direct`？不可——local 是 proxy，没有直传 URL。修正：local `ProxyViaBcs` 不携带 mode 信息。**约定**：service 在 ProxyViaBcs 下据 `self.cfg.multipart_threshold` 判定 mode；若 `size >= threshold`，`wire_client_target` 返回 multipart 形态（`parts[]` 为 `{part_number, upload_url: bcs_proxy_upload_url_part(...)}`，`part_count`/`part_size` 由 service 计算），客户端按 part 逐个 PUT 到 `.../content?part={n}`。实现者补本分支：
-
-```rust
-ClientUploadTarget::ProxyViaBcs => {
-    let row_size = /* 从 prepared.handle.backend_handle 取 size，或由 prepare_upload 传入 */;
-    if row_size >= self.cfg.multipart_threshold {
-        let part_size = 10*1024*1024; // local part size
-        let part_count = ((row_size + part_size - 1) / part_size) as u32;
-        let parts: Vec<_> = (1..=part_count as u16).map(|n| serde_json::json!({
-            "part_number": n, "upload_url": self.bcs_proxy_upload_url_part(sid, file_id, n)
-        })).collect();
-        serde_json::json!({ "mode":"multipart","method":"PUT","part_size":part_size,"part_count":part_count,"expires_at":prepared.expires_at,"parts":parts })
-    } else {
-        serde_json::json!({ "mode":"single","upload_url":self.bcs_proxy_upload_url(sid,file_id),"method":"PUT","expires_at":prepared.expires_at })
-    }
-}
-```
-（`row_size` 通过把 `size` 存进 `UploadHandle.backend_handle` 由 local 后端填，或直接 capture cmd.size 传给 `wire_client_target` —— 后者更简单：改 `wire_client_target` 签名加 `size: u64`。**采用**：签名 `wire_client_target(&self, sid, file_id, size, prepared)`。）
+> **`prepare_upload` 前置校验补全**：在生成 `part_count` 前应校验 `size > max_size` → 返回对应错误（handler 映射 413）；并校验 `ceil(size/part_size) > 65535` → 同样拒（`part_number` 为 `u16`）。否则代理 multipart 分支的 `as u16` 会溢出 panic。
 
 `stream_upload` / `complete_upload` / `delete_file` / `download_route` / `share_mint` / `share_consume` / `get_stream` / `sweep_expired_pending` / `delete_all_for_session` — 实现要点：
 
@@ -2175,7 +2173,7 @@ async fn local_conforms() {
     };
     let plugin: Arc<dyn bcs_storage_api::StoragePlugin> =
         Arc::new(LocalStoragePlugin::new(LocalStorageConfig { data_dir: dir.path().to_path_buf(), max_object_size: 1024 * 1024 }));
-    assert_storage_plugin_conforms(plugin, caps);
+    assert_storage_plugin_conforms(plugin, caps).await;
 }
 ```
 
@@ -2989,7 +2987,8 @@ let session_file_service: Arc<dyn bcs_service_api::application::session_files::S
     Arc::new(bcs_session_file::SessionFileServiceImpl::new(bcs_session_file::SessionFileServiceConfig {
         storage: storage.clone(),
         repo: file_repo.clone(),
-        session_repo: session_repo.clone(), // Arc<dyn SessionRepoPort> already in scope
+        session_repo: session_repo.clone(), // 变量名以 server.rs 现有为准确认（grep "SessionRepoPort" crates/bootstrap/bcs/src/server.rs）
+        env: env.clone(), // 与 file_repo（MySqlSessionFileStore::new(db, env)）同一 env；standalone 与 mysql 两处装配均须填
         max_size: config.session_files.max_file_size,
         multipart_threshold: config.session_files.multipart_threshold,
         bcs_base_url: format!("http://{}", config.bind), // or configured external URL
