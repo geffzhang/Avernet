@@ -152,21 +152,23 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 {
   "file_id": "01HZX...",
   "mode": "multipart",
+  "method": "PUT",
   "part_size": 10485760,
   "part_count": 50,
+  "expires_at": 1721466000,
   "parts": [
-    { "part_number": 1, "upload_url": "http://{bcs-host}/sessions/g1:a1b2c3d4/files/01HZX.../content?part=1", "method": "PUT", "expires_at": 1721466000 },
-    { "part_number": 2, "upload_url": "http://{bcs-host}/sessions/g1:a1b2c3d4/files/01HZX.../content?part=2", "method": "PUT", "expires_at": 1721466000 }
-  ],
-  "expires_at": 1721466000
+    { "part_number": 1, "upload_url": "..." },
+    { "part_number": 2, "upload_url": "..." }
+  ]
 }
 ```
 
-`part_count = ceil(size / part_size)`；一次 prepare 返回所有分片的 `upload_url`，可并行上传。
-每个 `upload_url` 仍由 BCS 提供（`PUT .../content?part={n}`），字节经 BCS 转发到后端对应分片
-（baas 的 OSS 分片直传 URL；OSS multipart 的对应 part）。客户端 PUT 各分片后调一次 `complete`，
-由 `StoragePlugin::complete_upload` 在后端组装（baas/OSS：list/组装分片；本地：按 part 顺序拼接
-临时段文件），客户端无需收集 ETag。中途可 `DELETE` 取消（后端 abort 分段会话）。
+`part_count = ceil(size / part_size)`；一次 prepare 返回所有分片的 `upload_url`（`method`/`expires_at`
+在最外层，各 part 共用），可并行上传。`upload_url` 指向随后端能力：presign 后端（baas/OSS）为后端真
+直传 URL（客户端直传后端、字节不经 BCS）；local 后端为 BCS 代理 `PUT .../content?part={n}`。客户端
+PUT 各分片后调一次 `complete`，由 `StoragePlugin::complete_upload` 在后端组装（baas/OSS：`list_parts`/
+组装；local：按 `part_number` 顺序拼接段文件），客户端无需收集 ETag。中途可 `DELETE` 取消
+（后端 abort 分段会话）。
 
 ### 通用约定
 
