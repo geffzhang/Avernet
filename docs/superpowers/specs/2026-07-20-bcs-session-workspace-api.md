@@ -30,15 +30,15 @@
 
 `FileStatus = "Pending"|"Ready"|"Deleting"|"Failed"`。
 
-| 状态 | 产生操作 | 暴露给客户端 | 含义 |
-|---|---|---|---|
-| `Pending` | `POST /files`（prepare） | 是 | 已 prepare，等 `PUT .../content` + `complete` |
-| `Ready` | `POST /complete` 成功 | 是 | 已可下载/删除 |
-| `Failed` | `complete`/上传后端失败 | 是 | 上传/后端失败；客户端可 `DELETE` 清理后重传 |
-| `Deleting` | `DELETE` 开始后端删除中的瞬态 | 否（内部） | 删除进行中；客户端视角直接 204，不看到此状态 |
+| 状态 | 产生操作 | 暴露给客户端 | v1 是否出现 | 含义 |
+|---|---|---|---|---|
+| `Pending` | `POST /files`（prepare） | 是 | 是 | 已 prepare，等 `PUT .../content` + `complete` |
+| `Ready` | `POST /complete` 成功 | 是 | 是 | 已可下载/删除 |
+| `Failed` | `complete`/上传后端失败 | 是 | 是 | 上传/后端失败；客户端可 `DELETE` 清理后重传 |
+| `Deleting` | （异步批量删除标记） | 否（内部） | **否**（v1 同步删除不置此态） | 仅未来「先 mark Deleting，后台批量 sweep」场景使用；v1 `DELETE` 同步完成后端删除+删行，直接 204 |
 
 客户端通过 `GET /.../{file_id}` 与 `GET /.../files`（list）可见 `Pending`/`Ready`/`Failed`，
-不会看到 `Deleting`（删除接口同步返回 204 或 502）。
+v1 不会看到 `Deleting`（删除接口同步返回 204 或 502）。
 
 ### `SessionFile` 资源（多数接口返回）
 
@@ -212,8 +212,6 @@ v2 分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stre
 
 ## 1.5 删除文件 / 取消上传 — `DELETE /sessions/{sid}/files/{file_id}`
 
-单一入口，按 `file_id` 当前 `status` 自动分流两种语义：
-
 单一入口，按 `file_id` 当前 `status` 自动分流三种语义：
 
 ### 1.5.a 删除文件（`status: Ready`）
@@ -246,12 +244,23 @@ v2 分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stre
 该 group 的 driver bot。镜像现有 `delete_session` 规则。会话普通成员可上传/下载/列出，但不可
 删除他人文件。
 
-### 响应与错误（完全幂等）
+### 响应与错误（BCS 元数据层幂等）
 
-**响应 204：** 无 body。`DELETE` 对**已删除/已取消**的 `file_id` 重复调用也返回 204，不报 404 ——
-BCS 无软删除审计表，无法区分"从未存在"与"已删干净"，故统一按完全幂等处理：若 DB 行已不存在，
-跳过元数据删除、对后端做一次幂等探测（`StoragePlugin::delete`/`abort_upload` 对已不存在对象
-返 `Ok`）后仍返 204。这与 `StoragePlugin::delete` 的 Idempotent 语义一致。
+**响应 204：** 无 body。`DELETE` 在 **BCS 元数据层幂等**：对已删除/已取消的 `file_id` 重复调用
+也返回 204，不报 404。
+
+- **行存在**：按 `status` 走 `delete`/`abort_upload`（后端对象已不存在时插件返 `Ok`），删行后返 204。
+- **行已不存在**：**直接返 204，不探测后端** —— 因为 `object_handle` 随 DB 行一同消失，无 handle
+  无法重建 `StorageHandle`/`UploadHandle`，也无法调用后端 `delete`/`abort_upload`。此时若后端仍有
+  残留对象，由 orphan sweep（设计文档「孤儿对账」）收敛。
+
+即：本接口不引入 tombstone/软删除表，重复删除在 BCS 元数据层幂等（返 204），后端残留由 sweep
+兜底；不在「行已删除」后做无法实现的假探测。
+
+**错误：**
+- `403 FORBIDDEN` —— 非上传者且非会话创建者/driver；
+- `502 STORAGE_BACKEND` —— 后端删除/取消失败（不泄漏后端内部信息，可重试）；
+- （行存在/已不存在均不返回 `404 FILE_NOT_FOUND`：存在则 204，不存在的 `file_id` 也 204。）
 
 **错误：**
 - `403 FORBIDDEN` —— 非上传者且非会话创建者/driver；
@@ -546,8 +555,13 @@ pub enum StorageError {
 - `abort_upload`（在 `complete_upload` 之前）使对象不存在，后续 `delete`/`get_stream` 返回
   `NotFound`
 - `delete` 幂等，且使后续 `get_stream` 返回 `NotFound`
+- `delete` 对**已不存在对象**（如先 `abort_upload` 或重复 `delete`）返回 `Ok(())`，作为独立用例
+  与上一条并列
 - `capabilities()` 的 `backend_name` 一致且非空
 - `health_check` 对真实（或 stub）后端返回 ok
+- **运行时禁用 `capabilities()` 的契约**：除 bootstrap 阶段外，`SessionFileService` 不应在请求
+  路径上调用 `capabilities()`；`capabilities` 应作为构造时注入的静态值（`max_size` 等在 bootstrap
+  固化）。契约测试可断言一次 prepare/complete 请求不触发二次 `capabilities()` 调用（baas 实现会 IO，禁止每请求调用）。
 
 ### key 派生约定
 
@@ -574,37 +588,23 @@ pub enum StorageError {
   `delete`：unlink 终态文件（幂等）。
 - 用于开发、测试和单节点部署。
 
-## 3.2 后端：`bcs-storage-baas`（`crates/plugins/bcs-storage-baas/`）
+## 3.2 后端：`bcs-storage-baas`（独立 crate，不在本仓库）
 
-baas base URL：`http://{baas-host}:8890/api/v1/bots/{tenant}/{bot_uuid}/files`（配置）。
-使用**留存模式**（不带 `device_path`），文件仅存 OSS 供会话共享，不做设备投递。
-BCS 对 baas 上传是**纯转发**：客户端 PUT 到 BCS，BCS 把字节流式中继到 baas 签发的 OSS
-直传 URL，自身不持有完整文件。
+baas 后端实现见 **`2026-07-20-bcs-session-workspace-design-baas-plugin.md`**（该插件 crate
+独立于 BCS 仓库，仅依赖 `bcs-storage-api` trait crate，在组装根按 `storage_backend = "baas"`
+装配）。这里只保留极简摘要供本契约文档自洽：
 
-| StoragePlugin 方法 | baas 调用 | 说明 |
-|---|---|---|
-| `backend_name` | — | `"baas"` |
-| `capabilities` | — | `supports_presign_download = true` |
-| `prepare_upload` | `POST /upload-url`（不带 `device_path`；带 `filename`、`file_size`、`expire_seconds`） | 返回 OSS 直传 `upload_url` + `transfer_id`；`UploadHandle.backend_handle` 含 `{ transfer_id, oss_direct_put_url, oss_key, expires_at }`。v1 仅 SINGLE 分片（≤100 MB）。 |
-| `stream_upload` | 流式 PUT 客户端字节到 `oss_direct_put_url` | BCS 只做转发，不全量落盘。 |
-| `complete_upload` | `POST /upload-url/{id}/complete` 后轮询 `GET /transfers/{id}` 直到 `status == "DONE"` | 留存模式直接跳到 DONE。返回 `StorageObjectMeta`（size，可选 sha256）。 |
-| `abort_upload` | `DELETE /upload-url/{transfer_id}` | 终态 `CANCELLED`；幂等。 |
-| `presign_get` | `POST /transfers/{id}/share-link`（`expire_seconds`） | `share_url` 作为预签名下载 URL，供 BCS `GET .../content` 的 302 跳转。 |
-| `get_stream`（回退） | `share-link` -> `GET share_url` -> 流式返回 | `supports_presign_download = true` 时下载走 302，一般不用。 |
-| `delete` | `DELETE /staging?key={oss key}` | 仅对终态 ticket（`DONE`/`FAILED`/`CANCELLED`）有效；BCS 保证调用前文件 `Ready`（`DONE`）。baas `404 OSS_OBJECT_NOT_FOUND` 映射为 `Ok`（幂等）。 |
-| `health_check` | baas base_url 可达性探测（`HEAD/GET` baas 根或配置的 probe path） | **不依赖任何真实 transfer_id**，避免污染/依赖生产数据与"某已知 id"不可复现问题。仅探测 base_url 可达 + 鉴权可用，不探测真实对象。 |
-
-**错误映射：**
-- baas `TRANSFER_NOT_FOUND` -> `StorageError::NotFound`
-- baas `TRANSFER_STATE_CONFLICT` / `NOT_TERMINAL_STATE` / `DIRECTORY_NOT_EMPTY` ->
-  `StorageError::Conflict`
-- baas `INVALID_TRANSITION` -> `StorageError::Conflict`
-- baas `NOT_IMPLEMENTED` -> `StorageError::Unsupported("baas")`
-- 其他 `code != 0` -> `StorageError::Backend`
-
-**身份 / 租户：** BCS 在存储插件配置中存储配置好的 baas `tenant` + `bot_uuid`（凭证）。
-按会话分配 bot 身份为后续扩展；v1 使用一个配置好的 service bot。baas 不施加 BCS 会话语义
-—— BCS 是会话维度权威，并拥有列表权威来源。
+- `backend_name` = `"baas"`；`capabilities().supports_presign_download = true`。
+- 上传走 baas **留存模式**（`POST /upload-url` 不带 `device_path`）：`prepare_upload` 取 OSS 直传
+  URL + `transfer_id`；`stream_upload` 流式转发 PUT 到该 OSS 直传 URL（v2 分段用
+  `parts[n].oss_direct_put_url`）；`complete_upload` 调 `complete` + 轮询 `DONE`；`abort_upload`
+  调 `DELETE /upload-url/{id}`。
+- 下载：`presign_get` 调 `POST /transfers/{id}/share-link` 取 `share_url`，BCS `GET .../content` 302 到它。
+- `delete`（`Ready`）调 `DELETE /staging?key={oss key}`，`404 OSS_OBJECT_NOT_FOUND` 映射为 `Ok`（幂等）。
+- `health_check` 仅探测 baas base_url 可达性，不依赖真实 `transfer_id`。
+- 会话隔离：`oss_key` 由 BCS 派生、含 `session_id`/`file_id`，不同会话对象路径天然隔离；BCS 列表
+  权威来自自身 DB（不用 `GET /staging`），共享同一 service bot 不影响会话隔离性。
+- 错误映射、`UploadHandle`/`StorageHandle` 形态、身份/租户、配置、测试、v2 分段细节均见 baas 插件文档。
 
 ## 3.3 未来后端（trait 就绪，v2+）
 

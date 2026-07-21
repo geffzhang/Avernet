@@ -242,8 +242,11 @@ bcs session file capabilities --session <sid>
 - **删除/取消：** `Pending` 与 `Failed` 都走 `abort_upload`、`Ready` 走 `delete`（`Failed` 本质尚未
   完成上传，按 `Pending` 处理，清理后端 staging/临时段再删行，不走 `delete`/`DELETE /staging`
   以免后端找不到 staging 对象）。统一先删后端对象，再删元数据行。先后端再行（已删行对应的孤儿
-  对象比「幽灵行」更安全，由 sweep 对账两者）。HTTP `DELETE` 端点**完全幂等**：DB 行已不存在时
-  仍对后端做一次幂等探测后返 204（不返 404），与 `StoragePlugin::delete` 的 Idempotent 一致。
+  对象比「幽灵行」更安全，由 sweep 对账两者）。HTTP `DELETE` 端点在 **BCS 元数据层幂等**：
+  行存在则按 `status` 走 `delete`/`abort_upload`（后端对象已不存在时插件返 `Ok`）删行后返 204；
+  **行已不存在时直接返 204，不探测后端** —— `object_handle` 随 DB 行一同消失，无 handle 无法重建
+  `StorageHandle`/`UploadHandle`，无法调用后端 `delete`/`abort_upload`（不做无法实现的假探测）；
+  此时若后端仍有残留对象，由 orphan sweep 收敛。不引入 tombstone/软删除表。
 - **删除会话钩子：** `delete_session` 执行时调用
   `SessionFileService::delete_all_for_session(sid)` -> 遍历文件 ->
   逐个 `StoragePlugin::delete` -> 删行。会话**完成**不触发此钩子；完成会话的文件仍可下载。
@@ -270,12 +273,13 @@ bcs session file capabilities --session <sid>
 
 新增到 bootstrap 配置（`config.rs`），对标现有插件配置块。**`max_size`（=`min(BCS max_file_size,
 后端 max_object_size)`）在 bootstrap 阶段计算并注入 `SessionFileService`，运行时不再动态调用
-`capabilities().max_object_size`**：
+`capabilities().max_object_size`**；除 bootstrap 外 `SessionFileService` 不应在请求路径上调用
+`capabilities()`（baas 实现会 IO），capabilities 作为构造时注入的静态值：
 
 ```toml
 [session_files]
 storage_backend = "local"       # "local"（v1 默认）| "baas"
 max_file_size = 104857600       # 100 MB v1；max_size = min(max_file_size, 后端 max_object_size)
-data_dir = "/var/bcs/session-files"   # local only
+data_dir = "/var/bcs/session-files"   # local only；可为相对路径或由启动脚本解析 $BCS_DATA_DIR
 # storage_backend = "baas" 时见 design-baas-plugin.md 的 [session_files.baas] 配置块
 ```

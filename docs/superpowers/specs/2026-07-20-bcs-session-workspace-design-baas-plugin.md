@@ -112,6 +112,12 @@ baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不�
 只看到 BCS 的 `upload_url`（指向 BCS 自己），不会接触到 baas 的 OSS 直传 URL 或 share_url
 （share_url 仅在下载 302 时短暂暴露给客户端，且为自签名的 OSS URL，不含 baas 凭证）。
 
+**会话隔离性**：v1 所有会话共享同一个 service bot 的 baas staging，但 `oss_key` 由 BCS 派生、
+含 `session_id` + `file_id`（如 `file-transfers/.../{session_id}/{file_id}/{file_name}`），不同会话
+的对象路径天然隔离；baas 的 `GET /staging` 列表**不在 BCS 使用**，BCS 列表权威来自自身 DB（按
+`session_id` 过滤）。因此即使共享同一 service bot，会话间的文件可见性仍由 BCS 在成员校验 + DB
+列表层保证，不依赖 baas 提供会话隔离。
+
 ## 流量隔离
 
 文件字节在客户端与 OSS 之间通过预签名 URL 直接流转：
@@ -133,11 +139,15 @@ max_file_size = 104857600       # 100 MB v1；max_size = min(max_file_size, 后�
 base_url = "http://{baas-host}:8890/api/v1/bots/{tenant}/{bot_uuid}/files"
 tenant = "<tenant>"             # 必填
 bot_uuid = "<service-bot-uuid>" # 必填，v1 用一个配置好的 baas service bot
-health_probe_path = "/"         # health_check 探测路径（相对 base_url），不依赖真实 transfer_id
+health_probe_path = ""          # 可选；相对 base_url 的 health endpoint（如 baas 提供 /health 则填 /health）。留空时探测 base_url 本身
 # 其余可选：鉴权凭证 / 超时 / complete 轮询间隔与超时 / share-link 默认 ttl（60–604800）/ stream 转发缓冲
 ```
 
 `max_size` 在 bootstrap 阶段计算并注入 `SessionFileService`，运行时不再调用 `capabilities()`。
+`health_check` 不对 `base_url`（一个鉴权资源路径）发 `HEAD` 期待 200 —— 那会因路径不是合法 baas
+资源返 404/405 而误判失败。`health_probe_path` 留空时探测 `base_url`，**接受 `2xx`/`401`/`404`/`405`
+即算「服务可达」**（只要网络通、服务在响应）；若 baas 部署提供独立 health endpoint（如 `/health`、
+`/status`），填入该路径并以 `2xx` 为可达判据。无论哪种，**都不依赖任何真实 `transfer_id`**。
 
 ## 测试
 
