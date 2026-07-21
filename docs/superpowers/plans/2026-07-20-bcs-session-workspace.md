@@ -952,12 +952,34 @@ pub async fn assert_storage_plugin_conforms(plugin: Arc<dyn StoragePlugin>, expe
 
 > 说明：契约套件对 presign/proxy 两条 byte 路径都走 `stream_upload` 注入字节（fake/contract 层不区分；后端真实直传路径由该后端 crate 自己的 integration 测试覆盖，如 local 是 proxy 不需直传）。`presign_get` 的 302 链路由 HTTP 层（Task 8）与后端 crate 测试覆盖，不在通用契约内强制。
 
-- [ ] **Step 5: 运行全部 storage-api 测试**
+- [ ] **Step 5: 暴露 `byte_stream_from_bytes` 公开 helper**
+
+`fake.rs` 现有私有 `make_stream(b: Bytes) -> ByteStream`。将其提取为 `lib.rs` 顶层 `pub fn byte_stream_from_bytes(b: bytes::Bytes) -> ByteStream`，供 HTTP `upload_bytes` handler（Task 8 Step 5）把 `axum::body::Bytes` 包成 `ByteStream` 喂给 service。在 `lib.rs` 加：
+
+```rust
+/// Wrap a single `Bytes` chunk as a `ByteStream` for proxy upload ingestion.
+pub fn byte_stream_from_bytes(b: bytes::Bytes) -> ByteStream {
+    struct OneShot(std::option::IntoIter<bytes::Bytes>);
+    impl futures::Stream for OneShot {
+        type Item = Result<bytes::Bytes, std::io::Error>;
+        fn poll_next(mut self: std::pin::Pin<&mut Self>, _cx: &mut std::task::Context<'_>)
+            -> std::task::Poll<Option<Self::Item>> {
+            std::task::Poll::Ready(self.0.next().map(Ok))
+        }
+    }
+    impl ByteStreamTrait for OneShot {}
+    Box::new(OneShot(vec![b].into_iter()))
+}
+```
+
+> `fake.rs` 的私有 `make_stream` 改为复用本函数（直接调用 `crate::byte_stream_from_bytes`），避免重复实现 `VecStream`/`OneShot`。
+
+- [ ] **Step 6: 运行全部 storage-api 测试**
 
 Run: `cargo test -p bcs-storage-api 2>&1 | tail -30`
-Expected: 6 fake 用例 PASS + 契约套件编译通过。
+Expected: 6 fake 用例 PASS + 契约套件编译通过 + `byte_stream_from_bytes` 编译通过。
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/bcs/Cargo.toml src/bcs/crates/plugin-api/bcs-storage-api
@@ -995,8 +1017,6 @@ Create `crates/service-api/bcs-service-api/src/port/repo/session_file.rs`：
 use async_trait::async_trait;
 
 use bcs_domain::{ActorRef, FileStatus, SessionFile};
-#[cfg(test)]
-use bcs_domain::FileStatus as _;
 
 use crate::ServiceResult;
 
@@ -1115,6 +1135,8 @@ pub struct PrepareUploadCommand {
     pub size: u64,
     pub mime_type: String,
     pub caller: ActorRef,
+    // NOTE: prepare/upload/list/download are participant-gated (HTTP `ensure_session_member`),
+    // NOT owner-gated — no `caller_identities` here. `owner` is recorded from `caller`.
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1124,11 +1146,18 @@ pub struct PrepareUploadResult {
     pub expires_at: u64,
 }
 
+/// Mutate (delete/share) authz is done ENTIRELY in the service, fed by values
+/// the HTTP layer pre-resolves (caller_identities + session_creator + driver_bot).
+/// HTTP fetches `session.created_by` (session_repo via session_management) and
+/// `group.driver_bot` (group_management) before constructing this command.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeleteFileCommand {
     pub session_id: String,
     pub file_id: String,
     pub caller: ActorRef,
+    pub caller_identities: Vec<String>,        // [caller.actor_id] + owned bot_uuids (HTTP `caller_identities()`)
+    pub session_creator: Option<String>,       // session.created_by
+    pub driver_bot: Option<String>,            // group.driver_bot
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1137,6 +1166,9 @@ pub struct ShareMintCommand {
     pub file_id: String,
     pub caller: ActorRef,
     pub ttl_seconds: Option<u64>,
+    pub caller_identities: Vec<String>,
+    pub session_creator: Option<String>,
+    pub driver_bot: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1564,6 +1596,13 @@ impl MySqlSessionFileStore {
     }
 }
 
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 fn row_to_session(env: &str, r: &DbRow) -> ServiceResult<SessionFile> {
     let actor_kind = match db_get_column::<String>(r, "owner_actor_kind")?.as_str() {
         "Bot" => ActorKind::Bot,
@@ -1589,6 +1628,9 @@ fn row_to_session(env: &str, r: &DbRow) -> ServiceResult<SessionFile> {
 #[async_trait]
 impl SessionFileRepoPort for MySqlSessionFileStore {
     async fn insert(&self, params: NewSessionFileParams) -> ServiceResult<SessionFile> {
+        // `created_at`/`updated_at` are the business creation time (unix secs) used for
+        // list ordering — NOT `expires_at`. `expires_at` lives inside `object_handle` JSON.
+        let now = now_secs();
         let stmt = DbStatement::new(format!(
             "INSERT INTO bcs_session_files \
              (env, file_id, session_id, owner_actor_kind, owner_actor_id, file_name, mime_type, \
@@ -1605,8 +1647,8 @@ impl SessionFileRepoPort for MySqlSessionFileStore {
         .bind(DbValue::from(params.size))
         .bind(DbValue::from(params.storage_backend.clone()))
         .bind(DbValue::from(params.object_handle.clone()))
-        .bind(DbValue::from(params.expires_at))
-        .bind(DbValue::from(params.expires_at));
+        .bind(DbValue::from(now))
+        .bind(DbValue::from(now));
         self.db.execute(stmt).await.map_err(bcs_service_api::ServiceError::from)?;
         self.get(&params.session_id, &params.file_id).await?
             .ok_or_else(|| bcs_service_api::ServiceError::Internal(anyhow::anyhow!("insert did not return row")))
@@ -1741,9 +1783,7 @@ pub fn can_mutate(
 }
 ```
 
-> **配套 DTO（必须）**：`DeleteFileCommand` 与 `ShareMintCommand` 需带 `pub caller_identities: Vec<String>` 字段 —— 在 Task 4 Step 2 定义这两个 DTO 时**即带上该字段**（不要后置补丁）。HTTP 层（Task 8）`caller_identities(state, caller)` helper 负责收集（见 Task 8 Step 2）。
->
-> **配套：`session_creator`/`driver_bot` 的解析**同样由 HTTP 层完成。`SessionFileService` 的 `delete_file`/`share_mint` trait 方法需在 command 里携带这俩判定值，或在 handler 内预检。**推荐**：在 `delete_file`/`share_mint` 内部仅依据 `caller_identities` 判 owner；"creator/driver" 两条额外放行由 HTTP 层在调用 service 前先用 caller_identities 调一次 `can_mutate` 短路（避免 service 需 session_repo 查 creator）。具体落字见 Step 5 实现。
+> **配套 DTO（已在 Task 4 Step 2 落地）**：`DeleteFileCommand` 与 `ShareMintCommand` 同时带 `caller_identities: Vec<String>`、`session_creator: Option<String>`、`driver_bot: Option<String>` 三字段。**mutate 鉴权完全在 service 层做**（可单测、不依赖 HTTP）：service 调 `can_mutate(cmd.caller_identities, &row.owner, cmd.session_creator.as_deref(), cmd.driver_bot.as_deref())`。HTTP 层（Task 8）职责仅为：① 用 `caller_identities(state, caller)` helper 收集身份；② 取 `session.info().created_by` 与 `group.driver_bot` 填入 command 的 `session_creator`/`driver_bot`。这样 service 不需 `group_repo`（仅用 command 携带值），HTTP 不做鉴权判断只做数据装配。`PrepareUploadCommand` 不带 `caller_identities`（prepare/upload 仅需 participant 校验，由 HTTP `ensure_session_member` 把关）。
 
 - [ ] **Step 3: 写 `prepare_upload` 测试（失败）**
 
@@ -1784,7 +1824,6 @@ mod tests {
             session_id: "g1:abcd1234".into(), file_name: "x.txt".into(), size: 100,
             mime_type: "text/plain".into(),
             caller: ActorRef { actor_kind: ActorKind::Human, actor_id: "human_1".into() },
-            caller_identities: vec!["human_1".into()],
         }).await.unwrap();
         assert!(r.file.object_handle.contains("\"ProxyViaBcs\"") || r.client_target_json.get("mode").is_none());
         assert_eq!(r.client_target_json["mode"], "single");
@@ -1843,7 +1882,6 @@ impl SessionFileServiceImpl {
     }
 
     fn max_size(&self) -> u64 { self.cfg.max_size.min(self.caps.max_object_size) }
-    fn is_presign_put(&self) -> bool { self.caps.supports_presign_put }
 
     fn bcs_proxy_upload_url(&self, sid: &str, file_id: &str) -> String {
         format!("{}/sessions/{}/files/{}/content", self.cfg.bcs_base_url, urlencoding::encode(sid), file_id)
@@ -1960,10 +1998,10 @@ impl SessionFileServiceImpl {
 
 - `stream_upload`：get 行确认 `Pending` 否则 `Conflict`；`content_length > max_size` 或与 prepare size 不符 → `InvalidInput`(413 由 handler映射)；重建 `UploadHandle`（`serde_json::from_str(&row.object_handle)`）；调 `storage.stream_upload(&handle, part_number, body)`；`map_storage_err`。
 - `complete_upload`：行需 `Pending` 否则 `Conflict`；重建 handle；`meta = storage.complete_upload(&handle).await`；`meta.size != row.size` 或（local multipart）缺段 → `Conflict`（local 后端在 `complete_upload` 内校验并返 `StorageError::Conflict`，service 透传）；`object_handle` 替换为 `StorageHandle` 序列化（瘦身后）；`repo.update_object_handle_and_status(..., Ready, meta.size)`。
-- `delete_file`：行不存在 → `Ok(())`（元数据层幂等，不报 NotFound）；行存在：解 `caller_identities`，`can_mutate(...)` 不通过 → `Forbidden`；`status==Ready` → `storage.delete(&storage_handle)`；`Pending/Failed` → `storage.abort_upload(&upload_handle)`；后端成功后 `repo.delete(...)`；后端失败 → `Backend`（502，可重试，**不删行**保留对象由 sweep）。`StorageError::NotFound` from backend → 当 `Ok`（幂等）。
+- `delete_file`：行不存在 → `Ok(())`（元数据层幂等，不报 NotFound）；行存在：`if !can_mutate(&cmd.caller_identities, &row.owner, cmd.session_creator.as_deref(), cmd.driver_bot.as_deref()) { return Err(Forbidden) }`；`status==Ready` → `storage.delete(&storage_handle)`；`Pending/Failed` → `storage.abort_upload(&upload_handle)`；后端成功后 `repo.delete(...)`；后端失败 → `Backend`（502，可重试，**不删行**保留对象由 sweep）。`StorageError::NotFound` from backend → 当 `Ok`（幂等）。
 - `download_route`：行需 `Ready` 否则 `InvalidState`；`presign_download` → `storage.presign_get(&handle, ttl)` → `DownloadRoute{ presign: Some }`；否则 `None`（HTTP 走 `get_stream`）。
-- `share_mint`：行需 `Ready` 否则 `InvalidState`；`can_mutate` 否则 `Forbidden`；`exp = now + ttl.clamp(60,604800)`；`token = share_token_encode(&ShareTokenPayload{v:1,file_id,exp}, &secret)`；`share_url = format!("{}/sessions/{}/shared-file/content?token={}", base_url_or_bcs, sid, token)`；返回 `ShareMintResult`。
-- `share_consume`：`payload = share_token_decode_and_verify(token, &secret)?`（err 映射 401/410）；`row = repo.get(sid, payload.file_id)`；行不存在或 `row.session_id != sid` → `NotFound`（404）；行需 `Ready` 否则 `InvalidState`；返回 `ShareConsumeResult{ file: row.redacted() }`（**剥离 `object_handle`** —— wire 序列化时 omit，见 Task 8 DTO）。
+- `share_mint`：行需 `Ready` 否则 `InvalidState`；`if !can_mutate(&cmd.caller_identities, &row.owner, cmd.session_creator.as_deref(), cmd.driver_bot.as_deref()) { return Err(Forbidden) }`；`exp = now + cmd.ttl_seconds.unwrap_or(share_default_ttl).clamp(60,604800)`；`token = share_token_encode(&ShareTokenPayload{v:1,file_id:cmd.file_id.clone(),exp}, &secret)`；`base = share_base_url.clone().unwrap_or_else(|| bcs_base_url.clone())`；`share_url = format!("{}/sessions/{}/shared-file/content?token={}", base, urlencoding::encode(&cmd.session_id), token)`；返回 `ShareMintResult{ share_url, share_token: token, expires_at: exp }`。
+- `share_consume`：`payload = share_token_decode_and_verify(token, &secret)?`（err 映射 401/410）；`row = repo.get(sid, payload.file_id)`；行不存在或 `row.session_id != sid` → `NotFound`（404）；行需 `Ready` 否则 `InvalidState`；返回 `ShareConsumeResult{ file: row }`（**不要调 `row.redacted()`**——`SessionFile` 无此方法；`object_handle` 不透出由 HTTP `to_dto` 序列化时剥离，service 返回完整 row 即可）。
 - `get_stream`：行 `Ready`；重建 `StorageHandle`；`storage.get_stream(&handle)`。
 - `sweep_expired_pending`：`repo.list_expired_pending(now, 100)`；逐行 `storage.abort_upload`（错误记日志不中断）+ `repo.update_status(..., Failed)`；返回处理数。
 - `delete_all_for_session`：`repo.delete_all_for_session(sid)` 返回行列表；逐行 `storage.delete(&storage_handle)`（错误记日志留孤儿对象，不中断，按 spec "部分失败语义"）；返回处理数。
@@ -2316,7 +2354,7 @@ pub async fn prepare_upload(
     }
     let cmd = PrepareUploadCommand {
         session_id: sid.clone(), file_name: body.file_name, size: body.size, mime_type: body.mime_type,
-        caller: caller_to_actor_ref(&caller), caller_identities: caller_identities(&state, &caller).await,
+        caller: caller_to_actor_ref(&caller),
     };
     match state.services.session_files.prepare_upload(cmd).await {
         Ok(r) => {
@@ -2362,12 +2400,11 @@ pub async fn upload_bytes(
     if !ensure_session_member(&state, &sid, &caller).await {
         return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
     }
-    let part = // parse ?part=n from uri.query() -> Option<u16>
-        uri.query().and_then(|q| q.split('&').find(|p| p.starts_with("part="))).and_then(|p| p[5..].parse().ok());
+    let part = uri.query()
+        .and_then(|q| q.split('&').find(|p| p.starts_with("part=")))
+        .and_then(|p| p[5..].parse().ok());
     let content_length = body.len() as u64;
-    // ByteStream from body: wrap a single-chunk stream.
-    let stream = // bytes_stream_from_bytes(body);
-        bcs_storage_api_byte_stream(body); // 见下 helper
+    let stream = bcs_storage_api::byte_stream_from_bytes(body.into());
     match state.services.session_files.stream_upload(&sid, &file_id, part, stream, content_length).await {
         Ok(()) => (StatusCode::ACCEPTED, Json(json!({"file_id": file_id, "status": "Pending"}))).into_response(),
         Err(e) => err_to_response(e),
@@ -2382,7 +2419,7 @@ pub async fn complete_upload(
         Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
     };
     if !ensure_session_member(&state, &sid, &caller).await {
-        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response(),
+        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
     }
     match state.services.session_files.complete_upload(&sid, &file_id).await {
         Ok(f) => (StatusCode::OK, Json(json!(to_dto(&f)))).into_response(),
@@ -2391,14 +2428,94 @@ pub async fn complete_upload(
 }
 ```
 
-`bcs_storage_api_byte_stream` helper（把 `Bytes` 包成 `ByteStream`）：在 `bcs-http` 内或 `bcs-storage-api` 暴露一个 `pub fn from_bytes(Bytes) -> ByteStream`（**推荐在 `bcs-storage-api` 加** `pub fn byte_stream_from_bytes(b: Bytes) -> ByteStream`，Task 8 与 Task 9/CLI 都复用）。**回填 Task 3**：在 `bcs-storage-api/src/fake.rs` 旁或 `lib.rs` 加 `pub fn byte_stream_from_bytes(b: bytes::Bytes) -> ByteStream`（把 `make_stream` 提为 pub）。
+`byte_stream_from_bytes` 已在 Task 3 Step 5 暴露（`bcs_storage_api::byte_stream_from_bytes`，入参 `bytes::Bytes`；`axum::body::Bytes` 经 `.into()` 转 `bytes::Bytes`）。
 
 - [ ] **Step 6: `delete_file` + `list_files` + `get_file` + `capabilities`**
 
-`delete_file`：`DELETE /sessions/{sid}/files/{file_id}`；行不存在也 204（service `delete_file` 对不存在行返 `Ok(())`）。
-`list_files`：`GET /sessions/{sid}/files`，`ListQuery` → `SessionFileListParams`，响应 `{items:[SessionFileDto], truncated, next_marker}`。
-`get_file`：`GET /sessions/{sid}/files/{file_id}` → `SessionFileDto`，不存在 404。
-`capabilities`：`GET /sessions/{sid}/files/capabilities` → `CapabilitiesView`（直接 service.capabilities()，不经成员校验也可 —— spec "可选"，**仍要求会话存在**；此处做成员校验保持一致）。
+`delete_file`：`DELETE /sessions/{sid}/files/{file_id}`。鉴权所需的 `session_creator`/`driver_bot` 由本 handler 解析后填入 command；行不存在也 204（service `delete_file` 对不存在行返 `Ok(())`）。
+
+```rust
+pub async fn delete_file(
+    State(state): State<HttpAppState>, Path((sid, file_id)): Path<(String, String)>,
+    headers: HeaderMap, uri: Uri,
+) -> Response {
+    let caller = match resolve_group_chat_caller(&state, &headers, &uri).await {
+        Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
+    };
+    if !ensure_session_member(&state, &sid, &caller).await {
+        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
+    }
+    // Resolve mutate-authz inputs: session creator (session.created_by) + group driver bot.
+    let sess = state.services.session_management.get(&sid).await.ok().flatten();
+    let group = sess.as_ref().and_then(|s| state.services.group_management.get(&s.group_id).await.ok().flatten());
+    let session_creator = sess.as_ref().and_then(|s| s.created_by.clone());
+    let driver_bot = group.as_ref().map(|g| g.driver_bot.clone());
+    let cmd = DeleteFileCommand {
+        session_id: sid, file_id, caller: caller_to_actor_ref(&caller),
+        caller_identities: caller_identities(&state, &caller).await,
+        session_creator, driver_bot,
+    };
+    match state.services.session_files.delete_file(cmd).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(), // 204 even if row absent (idempotent)
+        Err(e) => err_to_response(e),
+    }
+}
+
+pub async fn list_files(
+    State(state): State<HttpAppState>, Path(sid): Path<String>,
+    headers: HeaderMap, uri: Uri, Query(q): Query<ListQuery>,
+) -> Response {
+    let caller = match resolve_group_chat_caller(&state, &headers, &uri).await {
+        Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
+    };
+    if !ensure_session_member(&state, &sid, &caller).await {
+        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
+    }
+    let params = SessionFileListParams {
+        prefix: q.prefix, limit: q.limit.unwrap_or(100),
+        marker: q.marker,
+    };
+    match state.services.session_files.list(&sid, params).await {
+        Ok(page) => Json(json!({
+            "items": page.items.iter().map(to_dto).collect::<Vec<_>>(),
+            "truncated": page.truncated, "next_marker": page.next_marker,
+        })).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+pub async fn get_file(
+    State(state): State<HttpAppState>, Path((sid, file_id)): Path<(String, String)>,
+    headers: HeaderMap, uri: Uri,
+) -> Response {
+    let caller = match resolve_group_chat_caller(&state, &headers, &uri).await {
+        Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
+    };
+    if !ensure_session_member(&state, &sid, &caller).await {
+        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
+    }
+    match state.services.session_files.get(&sid, &file_id).await {
+        Ok(f) => (StatusCode::OK, Json(json!(to_dto(&f)))).into_response(),
+        Err(e) => err_to_response(e),
+    }
+}
+
+pub async fn capabilities(
+    State(state): State<HttpAppState>, Path(sid): Path<String>,
+    headers: HeaderMap, uri: Uri,
+) -> Response {
+    let caller = match resolve_group_chat_caller(&state, &headers, &uri).await {
+        Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
+    };
+    if !ensure_session_member(&state, &sid, &caller).await {
+        return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
+    }
+    let c = state.services.session_files.capabilities().await;
+    (StatusCode::OK, Json(json!(c))).into_response()
+}
+```
+
+> `SessionFileListParams`、`ListQuery` import 见 Step 1。`Session` / `Group` 的字段名（`created_by`/`driver_bot`/`group_id`）以 `bcs-service-api` 真实定义为准——实现时 `grep -n "pub created_by\|pub driver_bot\|pub group_id" crates/service-api/bcs-service-api/src/` 核对。
 
 - [ ] **Step 7: `download_content`（302 / 流式）**
 
@@ -2448,13 +2565,19 @@ pub async fn share_mint(
     let caller = match resolve_group_chat_caller(&state, &headers, &uri).await {
         Ok(c) => c, Err(_) => return (StatusCode::UNAUTHORIZED, Json(json!({"error":"UNAUTHORIZED"}))).into_response(),
     };
-    // member check first (mint requires participant); mutate authz done in service
+    // member check first (mint requires participant); mutate authz (creator/driver) done in service.
     if !ensure_session_member(&state, &sid, &caller).await {
         return (StatusCode::FORBIDDEN, Json(json!({"error":"FORBIDDEN"}))).into_response();
     }
+    let sess = state.services.session_management.get(&sid).await.ok().flatten();
+    let group = sess.as_ref().and_then(|s| state.services.group_management.get(&s.group_id).await.ok().flatten());
+    let session_creator = sess.as_ref().and_then(|s| s.created_by.clone());
+    let driver_bot = group.as_ref().map(|g| g.driver_bot.clone());
     let cmd = ShareMintCommand {
         session_id: sid, file_id, caller: caller_to_actor_ref(&caller),
-        caller_identities: caller_identities(&state, &caller).await, ttl_seconds: body.ttl_seconds,
+        ttl_seconds: body.ttl_seconds,
+        caller_identities: caller_identities(&state, &caller).await,
+        session_creator, driver_bot,
     };
     match state.services.session_files.share_mint(cmd).await {
         Ok(r) => (StatusCode::CREATED, Json(json!({"share_url": r.share_url, "share_token": r.share_token, "expires_at": r.expires_at}))).into_response(),
@@ -2633,7 +2756,7 @@ pub async fn complete_session_file(&self, sid: &str, file_id: &str) -> Result<se
 }
 ```
 
-> `ensure_success` / `ensure_success_status` 是现有 helper（`client.rs` 内已有"非 2xx 返回 anyhow"模式，照其抽取或复用）。
+> `ensure_success` / `ensure_success_status` **不是现成 helper**——现有 `BcsClient` 方法用内联 `if !response.status().is_success() { return Err(anyhow!(...)) }`。实现时先把它们抽取为 `BcsClient` 上的私有 helper（`async fn ensure_success(resp, label) -> Result<serde_json::Value>` 解析 JSON、`async fn ensure_success_status(resp, label) -> Result<()>` 仅判 status），再用于本任务所有新方法。不要假设它们已存在。
 
 - [ ] **Step 3: `upload` 高阶封装（三阶段自动串）**
 
@@ -2648,11 +2771,12 @@ pub async fn upload_session_file(&self, sid: &str, path: &str, name_override: Op
     let prepared = self.prepare_session_file(sid, &file_name, size, &mime).await?;
     let mode = prepared["mode"].as_str().unwrap_or("single");
     let file_id = prepared["file_id"].as_str().context("missing file_id")?.to_string();
-    let file = tokio::fs::File::open(path).await?;
     match mode {
         "single" => {
             let url = prepared["upload_url"].as_str().context("missing upload_url")?.to_string();
-            self.put_session_file_bytes(&url, reqwest::Body::from(file.into_std().await)).await?;
+            // reqwest::Body does NOT impl From<std::fs::File> — stream an open tokio File:
+            let file = tokio::fs::File::open(path).await?;
+            self.put_session_file_bytes(&url, reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(file))).await?;
         }
         "multipart" => {
             let part_size = prepared["part_size"].as_u64().context("missing part_size")? as usize;
@@ -2661,6 +2785,8 @@ pub async fn upload_session_file(&self, sid: &str, path: &str, name_override: Op
             for (i, p) in parts.iter().enumerate() {
                 let url = p["upload_url"].as_str().context("missing part url")?.to_string();
                 let mut f = tokio::fs::File::open(path).await?;
+                // tokio AsyncSeekExt must be in scope:
+                use tokio::io::{AsyncSeekExt as _};
                 f.seek(std::io::SeekFrom::Start((i as u64) * part_size as u64)).await?;
                 let take = f.take(part_size as u64);
                 self.put_session_file_bytes(&url, reqwest::Body::wrap_stream(tokio_util::io::ReaderStream::new(take))).await?;
@@ -2678,7 +2804,7 @@ pub async fn upload_session_file(&self, sid: &str, path: &str, name_override: Op
 }
 ```
 
-> `tokio-util` 0.7 `io` feature 需加到 `bcs-cli` dev/dep；`bcs-cli` 现有依赖确认后加 `tokio-util = { workspace = true, features = ["io"] }`。
+> `tokio-util` 0.7 `io` feature 需加到 `bcs-cli` dev/dep；`bcs-cli` 现有依赖确认后加 `tokio-util = { workspace = true, features = ["io"] }`。reqwest 已带 `stream` workspace feature；`reqwest::Body::wrap_stream` + `response.bytes_stream()` 均可。
 
 - [ ] **Step 4: 其余 `BcsClient` 方法**
 
@@ -3169,9 +3295,9 @@ git commit -m "test(bcs-http): session file workspace e2e (upload/download/share
 ### 3. 类型一致性
 
 - `SessionFileService` trait 方法签名跨 T4（定义）↔ T6（impl）↔ T8（调用）一致：`prepare_upload(PrepareUploadCommand)`、`stream_upload(&str,&str,Option<u16>,ByteStream,u64)`、`complete_upload(&str,&str)`、`delete_file(DeleteFileCommand)`、`get`/`list`/`download_route`/`share_mint(ShareMintCommand)`/`share_consume(&str,&str)`/`get_stream`/`sweep_expired_pending`/`delete_all_for_session`。
-- `DeleteFileCommand`/`ShareMintCommand` 在 T4 定义后方在 T6 Step 2 修订加 `caller_identities: Vec<String>` —— **Self-Review 修正动作**：须确保 T4 最终 DTO 含此字段（T6 Step 2 已注明「回头修订 Task 4」）。执行时 Task 4 Step 2 的 DTO 定义即带上 `caller_identities`，避免后置补丁。
+- **mutate 鉴权一致**（review 修正后）：`DeleteFileCommand`/`ShareMintCommand` 在 T4 Step 2 即声明 `caller_identities: Vec<String>` + `session_creator: Option<String>` + `driver_bot: Option<String>`；service（T6 `delete_file`/`share_mint`）调 `can_mutate(&cmd.caller_identities, &row.owner, cmd.session_creator.as_deref(), cmd.driver_bot.as_deref())`；HTTP（T8 `delete_file`/`share_mint` handler）解析 `session.created_by` + `group.driver_bot` 填入 command，不做判断。`PrepareUploadCommand` 不带 `caller_identities`（prepare 仅需 participant 校验）。service 的 `session_repo` 仅供 `prepare_upload` 校验会话存在用，不再用于鉴权（driver_bot 由 HTTP 经 group 注入），故 service 不依赖 `group_repo`。
 - `PreparedUpload.client_target` 枚举名 `ClientUploadTarget::{Direct, ProxyViaBcs}` 跨 T3↔T6↔T8 一致；`UploadMode::{Single,Multipart}` serde lowercase 一致。
-- `ByteStream = Box<dyn ByteStreamTrait + Send + Unpin>` 跨 T3↔T6↔T8 一致；`byte_stream_from_bytes` 在 T3 暴露、T8 Step 5/T9 复用。
+- `ByteStream = Box<dyn ByteStreamTrait + Send + Unpin>` 跨 T3↔T6↔T8 一致；`byte_stream_from_bytes` 在 T3 Step 5 暴露、T8 Step 5 经 `bcs_storage_api::byte_stream_from_bytes` 调用。
 - `SessionFileRepoPort` 方法名跨 T4↔T5↔T6 一致（`insert`/`get`/`update_object_handle_and_status`/`update_status`/`delete`/`list`/`list_expired_pending`/`delete_all_for_session`）。
 - `FileStatus` serde PascalCase 跨 T1↔T5(mysql `status` 列存 `"Pending"`/`"Ready"`/`"Failed"`) 一致 —— T5 `row_to_session` 用 `serde_json::from_value(String)` 还原，需确认 `FileStatus` 可从裸字符串反序列化（PascalCase rename 覆盖 `Serialize`/`Deserialize` 两向，OK）。
 
