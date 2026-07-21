@@ -30,7 +30,7 @@ baas 是 **bot 中心化、异步 ticket 模型**的文件传输服务。base UR
 
 BCS 上传全部走 baas **留存模式（retention mode）**：`POST /upload-url` **不带 `device_path`**，
 文件仅存 OSS 供会话共享，不做设备投递（`device_path` 提供 → 投递模式，文件送达设备，不适用本场景）。
-留存模式下 ticket 状态机短促：`CREATED → UPLOAD_COMPLETED → DONE`（跳过 `PULLING`）。
+留存模式下 ticket 状态机：`CREATED → UPLOADING → UPLOAD_COMPLETED → DONE`（跳过 `PULLING` 拉取阶段，无设备投递）。
 
 baas 不施加 BCS 会话语义 —— BCS 才是会话维度权威，BCS 自身 DB 为列表权威来源（`GET /staging` 列表
 不使用，那是 baas 的 bot 命名空间扁平列表，与会话作用域不对应）。

@@ -23,9 +23,8 @@
 - `ActorRef = { "actor_kind": "Bot"|"Human", "actor_id": "<string>" }`。
 - `object_handle` 为后端特定的不透明字符串（`UploadHandle`/`StorageHandle` 的序列化形式），
   **仅持久化于 BCS DB 行内部，不透出给客户端**；客户端所有操作以 `file_id` 寻址。
-- 字段可空性：`sha256` 为可选 —— 后端未校验/未返回完整性哈希时为 `null`（baas 留存模式
-  **v1 不做内容完整性校验，`sha256` 恒为 `null`（占位字段）**；未来后端可在 `complete_upload`
-  返回 sha256 时透出。客户端必须按可空解析，不得将 `sha256` 视为必填。
+- 字段可空性：`sha256` 为可选 —— **v1 不做内容完整性校验，`sha256` 恒为 `null`（占位字段）**；
+  未来后端可在 `complete_upload` 返回 sha256 时透出。客户端必须按可空解析，不得将 `sha256` 视为必填。
 
 ### `FileStatus` 状态机
 
@@ -217,7 +216,7 @@ PUT 各分片后调一次 `complete`，由 `StoragePlugin::complete_upload` 在�
 ## 1.4 完成上传 — `POST /sessions/{sid}/files/{file_id}/complete`
 
 三阶段第三步。
-- 本地：finalize（fsync + 原子改名到终态 key），校验 size/sha；
+- 本地：finalize（fsync + 原子改名到终态 key），校验 size（v1 不校验 sha256，见通用约定）；
 - baas：调 baas `complete` + 轮询到 `DONE`，取回 `StorageObjectMeta`。
 
 **请求 body：** 空 `{}`。
@@ -390,8 +389,8 @@ Bearer token 不泄漏给 OSS；OSS 预签名 URL 自带 query 签名，自洽�
 
 **权限：无**（同 1.9.b 的校验，跳过成员鉴权）。字节路由复用 1.8：
 - 预签名后端：**302 跳转** 到 `StoragePlugin::presign_get` 签名 URL，**有效期取 token 过期与后端
-  预签名 TTL 的更早者**（确保分享链接过期后该 URL 亦不可用）。跨主机重定向自动剥离 `Authorization`
-  头。
+  预签名 TTL 的更早者**（确保分享链接过期后该 URL 亦不可用）。跨主机重定向**必须剥离 `Authorization`
+  头（同 §1.8：`bcs-cli` 显式配置 `RedirectPolicy`，不依赖默认）。
 - 本地后端：流式返回 body，含 `Content-Type`/`Content-Length`/`Content-Disposition: attachment;
   filename="..."`。
 
