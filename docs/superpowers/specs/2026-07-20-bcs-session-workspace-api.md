@@ -89,22 +89,26 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 
 ## 1.1 查询能力 — `GET /sessions/{sid}/files/capabilities`
 
-可选。上传一律走 BCS 三阶段，无需先查能力；该端点主要供客户端预判**下载**是否直连。
+可选。客户端可据此预判**上传/下载**字节是否直连后端（不经 BCS）。
 
 **响应 200：**
 ```json
 {
   "storage": "baas",
+  "presign_upload": true,
   "presign_download": true,
   "max_size": 104857600
 }
 ```
 
 - `storage`：存储后端名称，对应 `StoragePlugin::backend_name()`（`"local"`/`"baas"`/…）。
+- `presign_upload=true`：prepare 返回的 `upload_url` 是后端**真直传 URL**（如 OSS），客户端 PUT 直连后端、字节不经 BCS（baas/OSS）。需要客户端网络可达 OSS。
+- `presign_upload=false`（local）：`upload_url` 是 BCS 代理 `PUT .../content`，字节经 BCS。
 - `presign_download=true`：`GET .../content` 会 302 跳转到后端签名 URL，字节不经 BCS。
-- `presign_download=false`（如本地后端）：`GET .../content` 由 BCS 流式返回 body。
+- `presign_download=false`（local）：`GET .../content` 由 BCS 流式返回 body。
 - `max_size` = min(BCS `max_file_size` 配置, 后端 `capabilities().max_object_size`)，在 bootstrap
   阶段计算并注入 `SessionFileService`，运行时不再动态调用 `capabilities()`（baas `capabilities()` 会 IO）。
+  注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
   注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
 
 ## 1.2 发起上传（prepare） — `POST /sessions/{sid}/files`
@@ -166,8 +170,14 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 
 ### 通用约定
 
-`upload_url`（单片）与 `parts[].upload_url`（分段）始终由 BCS 提供，无论后端是本地还是 baas。
-后端差异（本地落盘 / baas 签发 OSS 直传 URL 并转发）封装在 `StoragePlugin` 内，对客户端不可见。
+`upload_url`（单片）与 `parts[].upload_url`（分段）始终由 BCS prepare 返回，但其**指向**随后端能力而异，
+客户端协议不变（始终 PUT 到该 URL 再 `complete`）：
+- **presign 上传后端**（baas/OSS，`supports_presign_put=true`）：URL 是后端签发的**真直传 URL**
+  （如 `https://oss.../?Sig=...`），客户端 PUT **直连后端、字节不经 BCS**。客户端跨主机 PUT 时应剥离
+  `Authorization`（OSS 预签名 URL 自带签名）。
+- **代理后端**（local，`supports_presign_put=false`）：URL 是 BCS 自有的 `PUT .../content`，字节经 BCS。
+
+要求客户端能直传 OSS 的前提：客户端网络可达 OSS（baas「第四通道」前提）；仅能连 BCS 的客户端用 local 后端。
 所有上传链接在 `expires_at` 前有效；超时未上传可用 `DELETE` 取消后重新发起。
 `expires_at` = BCS 给出的上传链接/句柄过期时间（取 `ttl_secs` 配置与后端签发 URL 过期时间的更早者）；
 超时未 `complete` 的 `Pending` 文件由后台 sweep 转为 `Failed` 并 `abort_upload` 清理后端，v1 由 sweep
@@ -178,11 +188,14 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 
 ## 1.3 上传字节 — `PUT /sessions/{sid}/files/{file_id}/content`
 
-三阶段第二步。客户端把原始字节 PUT 到 1.2 返回的 `upload_url`（即本端点）。BCS 流式接收并
-交给 `StoragePlugin::stream_upload`：本地直接落盘到临时文件；baas 把字节**流式转发**到 baas
-签发的 OSS 直传 URL。BCS 不在内存/磁盘全量持有文件。单片上传时 `part_number = None`；
-分段上传时 URL 带 `?part={n}`，BCS 解析后以 `Some(n)` 传入 `stream_upload`，各分片独立落盘/
-转发，最后由 `complete_upload` 在后端组装。
+三阶段第二步，**仅代理后端（local，`supports_presign_put=false`）使用**：客户端把原始字节 PUT 到
+1.2 返回的 `upload_url`（即本端点，BCS 自有）。BCS 流式接收并交给 `StoragePlugin::stream_upload`：
+本地直接落盘到临时段文件。单片上传时 `part_number = None`；分段上传时 URL 带 `?part={n}`，BCS 解析后
+以 `Some(n)` 传入 `stream_upload`，各分片独立落盘，最后由 `complete_upload` 在本地按序拼接组装。
+
+**presign 上传后端（baas/OSS，`supports_presign_put=true`）不走此端点**：1.2 返回的 `upload_url`
+已是后端真直传 URL（如 OSS），客户端直接 PUT 到后端、字节不经 BCS，本端点对这类上传不被调用。BCS
+在 `complete` 时凭 `object_handle` 里的 `transfer_id` 等定位信息调用后端完成。
 
 与下载端点 `GET /sessions/{sid}/files/{file_id}/content` 同路径、不同方法。
 
@@ -453,7 +466,7 @@ bcs session file share --session <sid> --file-id <id> [--ttl <seconds>] [--token
 ```
 bcs session file capabilities --session <sid> [--token <t>] [--url <bcs-url>]
 ```
-打印 `{storage, presign_download, max_size}`，可选用以预判下载是否直连。
+打印 `{storage, presign_upload, presign_download, max_size}`，可选用以预判上传/下载字节是否直连后端。
 
 ---
 
@@ -473,26 +486,38 @@ pub trait StoragePlugin: Send + Sync + 'static {
     // SessionFile.storage_backend for auditability.
     fn backend_name(&self) -> &'static str;
 
-    // Advertised capabilities. Only affects download routing now (upload is
-    // always the BCS three-stage flow).
+    // Advertised capabilities. Drive both upload and download byte routing.
     fn capabilities(&self) -> StorageCapabilities;
 
-    // --- upload: BCS three-stage, plugin decides concrete implementation ---
-    // prepare -> stream -> complete, with abort for cancel. The UploadHandle
-    // returned by prepare is serialized into SessionFile.object_handle and
-    // reconstructed for the later stages (HTTP is stateless across requests).
+    // --- upload: BCS three-stage (prepare -> [stream] -> complete) ---
+    // Byte path is capability-driven:
+    //   supports_presign_put = true  (baas/OSS): prepare returns a direct
+    //     backend upload URL; the client PUTs bytes directly to the backend;
+    //     stream_upload is NOT called by BCS (bytes bypass BCS).
+    //   supports_presign_put = false (local): BCS synthesizes its own
+    //     PUT .../content proxy URL; client PUTs bytes to BCS; BCS feeds them
+    //     via stream_upload. complete_upload finalizes either way.
+    // The UploadHandle returned by prepare is serialized into
+    // SessionFile.object_handle and reconstructed for complete/abort
+    // (HTTP is stateless across requests). For presign_put backends the
+    // per-part direct URLs are returned to the client in the prepare HTTP
+    // response only — NOT persisted in object_handle (keeps the row small;
+    // see § UploadHandle.backend_handle shapes).
 
-    /// Reserve a staging upload. Local: open a temp file. Baas: call
-    /// POST /upload-url (retention mode) to get an OSS direct-put URL + transfer_id.
+    /// Reserve a staging upload. Local: open temp file(s). Baas/OSS: call
+    /// backend presign to get a direct upload URL (single) or per-part URLs
+    /// (multipart) + a transfer id. Returns the client-facing upload target
+    /// (direct URL for presign backends; None for local, where BCS synthesizes
+    /// its proxy URL) and the persistable handle.
     async fn prepare_upload(
         &self,
         req: UploadPrepareRequest,
-    ) -> Result<UploadHandle, StorageError>;
+    ) -> Result<PreparedUpload, StorageError>;
 
-    /// Feed the client's bytes into staging as a stream. Local: write to temp
-    /// file (single) or a per-part temp segment (multipart). Baas: stream-relay
-    /// (PUT) the bytes to the OSS direct-put URL issued in prepare_upload —
-    /// BCS never buffers the whole file.
+    /// Feed client bytes into staging as a stream. Called ONLY by
+    /// non-presign backends (local) where bytes arrive at BCS's `PUT .../content`
+    /// proxy endpoint. Presign backends (baas/OSS) never invoke this — the
+    /// client PUTs directly to the backend URL issued in prepare_upload.
     ///
     /// `part_number`: 单片上传传 `None`；分段上传传对应分片编号（1-based）。v1 即支持分段。
     async fn stream_upload(
@@ -502,7 +527,7 @@ pub trait StoragePlugin: Send + Sync + 'static {
         body: ByteStream,
     ) -> Result<(), StorageError>;
 
-    /// Finalize the upload. Local: fsync + atomic rename to final key. Baas:
+    /// Finalize the upload. Local: fsync + atomic rename / concat parts. Baas:
     /// POST /upload-url/{id}/complete then poll /transfers until DONE.
     async fn complete_upload(
         &self,
@@ -542,7 +567,9 @@ pub trait StoragePlugin: Send + Sync + 'static {
 
 ```rust
 pub struct StorageCapabilities {
-    pub supports_presign_download: bool, // true: GET .../content 302s; false: BCS streams
+    pub supports_presign_put: bool,     // upload: true → client PUTs direct to backend (baas/OSS); false → BCS proxy (local)
+    pub supports_presign_download: bool, // download: true → GET .../content 302s; false → BCS streams
+    pub supports_stream_put: bool,       // true for all known backends (BCS-proxy upload path usable)
     pub supports_stream_get: bool,       // true for all known backends
     pub max_object_size: u64,            // backend hard limit; BCS also enforces its own max_file_size
 }
@@ -551,19 +578,56 @@ pub struct UploadPrepareRequest {
     pub key: String,                // BCS-derived final key, e.g. session-files/{env}/{sid}/{file_id}/{file_name}
     pub file_name: String,
     pub mime_type: String,
-    pub size: u64,                  // authoritative; backends also enforce max_object_size
+    pub size: u64,                  // authoritative; backends also enforce max_object_size / multipart threshold
     pub ttl_secs: u64,              // staging / upload_url lifetime
 }
 
+/// Result of prepare_upload. `client_target` is what BCS hands to the client
+/// as the `upload_url`/`parts[].upload_url` (§ 1.2): a direct backend URL for
+/// presign_put backends (bytes bypass BCS), or None for local where BCS
+/// synthesizes its own `PUT .../content` proxy URL. `handle` is what BCS
+/// persists to object_handle and reconstructs for complete/abort (it must NOT
+/// carry ephemeral per-part direct URLs that the client already received —
+/// keep the persisted row small).
+pub struct PreparedUpload {
+    pub handle: UploadHandle,
+    pub client_target: ClientUploadTarget,
+    pub expires_at: u64,
+}
+
+pub enum ClientUploadTarget {
+    /// presign_put backend (baas/OSS): the direct backend URL(s) the client
+    /// PUTs to. BCS passes these to the client as-is; bytes never touch BCS.
+    Direct {
+        mode: UploadMode,                       // Single | Multipart
+        // single: one URL; multipart: per-part URLs (1-based)
+        url: Option<String>,                    // Some for Single
+        parts: Option<Vec<UploadPartUrl>>,      // Some for Multipart
+        part_size: Option<u64>,
+        part_count: Option<u32>,
+    },
+    /// non-presign backend (local): no direct URL; BCS serves its own
+    /// `PUT .../content` endpoint and relays bytes via stream_upload.
+    /// (BCS synthesizes the proxy URL itself — the plugin doesn't know BCS's host.)
+    ProxyViaBcs,
+}
+
+pub struct UploadPartUrl { pub part_number: u16, pub url: String }
+
+pub enum UploadMode { Single, Multipart }
+
 /// Backend-specific, serializable handle persisted as SessionFile.object_handle.
-/// Reconstructed for stream_upload / complete_upload / abort_upload / delete.
+/// Reconstructed for stream_upload (local only) / complete_upload / abort_upload / delete.
+/// For presign_put backends this carries ONLY the durable locator (transfer_id,
+/// oss_key, type) — NOT the per-part OSS direct URLs (those go to the client via
+/// PreparedUpload.client_target and are not persisted).
 pub struct UploadHandle {
     pub backend: &'static str,
     pub key: String,
-    // local (single): { temp_path, final_path }
+    // local (single):    { temp_path, final_path }
     // local (multipart): { final_path, parts: [{ part_number, temp_path }] }
-    // baas (single):  { transfer_id, oss_direct_put_url, oss_key, expires_at }
-    // baas (multipart): { transfer_id, parts: [{ part_number, oss_direct_put_url }], oss_key, upload_session_id, expires_at }
+    // baas  (single):    { transfer_id, type:"SINGLE",  oss_key, expires_at }
+    // baas  (multipart): { transfer_id, type:"MULTIPART", upload_session_id, oss_key, expires_at }
     pub backend_handle: serde_json::Value,
     pub expires_at: u64,
 }
@@ -623,10 +687,16 @@ pub enum StorageError {
 ### 契约测试（位于 `bcs-storage-api`，所有后端共用）
 
 每个 `StoragePlugin` 实现须通过同一套用例（对标 `bcs-test-support`）：
-- `prepare_upload` -> `stream_upload(handle, None /* part_number */, 已知字节)` -> `complete_upload`
-  得到一个 `Ready` 对象，其 `StorageObjectMeta.size` 与输入一致
-- 分段契约（v1）：`stream_upload(handle, Some(n), part_bytes)` 多次 -> `complete_upload`
-  在后端按序组装，往返原始字节（与单片同套测试，仅 size ≥ 阈值）
+- `prepare_upload` 返回 `PreparedUpload`；若 `supports_presign_put`，`client_target` 为 `Direct`
+  （BCS 把该 URL 交给客户端、客户端直传后端、字节不经 BCS）；若非，`client_target` 为 `ProxyViaBcs`
+  （BCS 用 `stream_upload` 接收字节）。
+- 非-presign 后端（local）：`prepare_upload` -> `stream_upload(handle, None, 已知字节)` ->
+  `complete_upload` 得 `Ready`，`StorageObjectMeta.size` 一致。
+- presign 后端（baas/OSS）：`prepare_upload` -> （客户端直接 PUT 到 `client_target` URL，不经 BCS）->
+  `complete_upload` 得 `Ready`；往返字节一致。`stream_upload` 不被调用（调用应返 `Unsupported` 或不被断言）。
+- 分段契约（v1）：单 part（local）用 `stream_upload(handle, Some(n), part_bytes)` 多次；
+  presign 后端用 `client_target = Direct{ Multipart, parts[] }` 客户端逐 part 直传；后端 `complete_upload`
+  组装，往返原始字节（与单片同套测试，仅 size ≥ 阈值）。
 - `complete_upload` 后 `get_stream`（或 `supports_presign_download` 时 `presign_get` + GET）
   能往返原始字节
 - `abort_upload`（在 `complete_upload` 之前）使对象不存在，后续 `delete`/`get_stream` 返回
@@ -650,12 +720,14 @@ pub enum StorageError {
 
 ## 3.1 后端：`bcs-storage-local`（`crates/plugins/bcs-storage-local/`）
 
-- `capabilities`：`supports_presign_download = false`，`max_object_size` 取**配置项**（默认等于 BCS
+- `capabilities`：`supports_presign_put = false`（上传字节经 BCS 代理，走 `stream_upload`）、
+  `supports_presign_download = false`，`max_object_size` 取**配置项**（默认等于 BCS
   `max_file_size` 或合理上限），不以磁盘剩余空间作为静态 capability（剩余空间动态变化无法在启动时
   固定）；`stream_upload` 中再实际校验磁盘可用空间，不足返 `StorageError::Backend`。
 - key 映射到 `$BCS_DATA_DIR/session-files/...`（或配置的 `data_dir`）下的文件。
-- `prepare_upload`：单片开一个临时文件（`backend_handle` 含 `{ temp_path, final_path }`）；
-  **分段**（size ≥ 阈值）`backend_handle` 含 `{ final_path, parts: [{ part_number, temp_path }] }`。
+- `prepare_upload`：返回 `PreparedUpload{ client_target: ProxyViaBcs, handle }`（BCS 据此把
+  `PUT {bcs_base}/.../content` 作为客户端 `upload_url`）。单片 `backend_handle` 含
+  `{ temp_path, final_path }`；**分段**（size ≥ 阈值）含 `{ final_path, parts: [{ part_number, temp_path }] }`。
   **`temp_path` 必须包含 `file_id`（key 中已含）并附加随机后缀**，分段时各段路径含 `part_number`，
   保证多客户端/多 worker 同 key 并发不冲突（单片 `{data_dir}/{key}.{rand}.part` /
   分段 `{data_dir}/{key}.p{part_number}.{rand}.part`）。v1 即支持分段。
@@ -674,23 +746,29 @@ baas 后端实现见 **`2026-07-20-bcs-session-workspace-design-baas-plugin.md`*
 独立于 BCS 仓库，仅依赖 `bcs-storage-api` trait crate，在组装根按 `storage_backend = "baas"`
 装配）。这里只保留极简摘要供本契约文档自洽：
 
-- `backend_name` = `"baas"`；`capabilities().supports_presign_download = true`。
-- 上传走 baas **留存模式**（`POST /upload-url` 不带 `device_path`）：`prepare_upload` 取 OSS 直传
-  URL + `transfer_id`（单片 `type:"SINGLE"`，分段 `type:"MULTIPART"`，baas 据 `file_size` 与
-  `MULTIPART_THRESHOLD` 自动分流）；`stream_upload` 流式转发 PUT 到 OSS 直传 URL（单片用
-  `oss_direct_put_url`，分段用 `parts[n].oss_direct_put_url`）；`complete_upload` 调 `complete` +
-  轮询 `DONE`（分段 baas 自行 `list_parts` 组装）；`abort_upload` 调 `DELETE /upload-url/{id}`。
+- `backend_name` = `"baas"`；`capabilities()`: `supports_presign_put = true`（**上传字节不经 BCS**，客户端直传 OSS）、`supports_presign_download = true`。
+- 上传走 baas **留存模式**（`POST /upload-url` 不带 `device_path`）：`prepare_upload` 取 baas 签发的
+  OSS 直传 URL + `transfer_id`（单片 `type:"SINGLE"`，分段 `type:"MULTIPART"`，baas 据 `file_size` 与
+  `MULTIPART_THRESHOLD` 自动分流），返回 `PreparedUpload{ client_target: Direct{...}, handle }` ——
+  BCS 把 `client_target` 里的真 OSS 直传 URL 原样交给客户端（§1.2 的 `upload_url`/`parts[].upload_url`），
+  客户端直接 PUT 到 OSS、**字节不经 BCS**，`stream_upload` 不被调用。`complete_upload` 调 baas `complete`
+  + 轮询 `DONE`（分段 baas 自行 `list_parts` 组装，客户端/BCS 都不收集 ETag）；`abort_upload` 调
+  `DELETE /upload-url/{id}`。`object_handle` 只持久化 `transfer_id`/`type`/`oss_key` 等**定位信息**，
+  不持久化短命的 per-part OSS 直传 URL（详见 baas 插件文档）。
 - 下载：`presign_get` 调 `POST /transfers/{id}/share-link` 取 `share_url`，BCS `GET .../content` 302 到它。
 - `delete`（`Ready`）调 `DELETE /staging?key={oss key}`，`404 OSS_OBJECT_NOT_FOUND` 映射为 `Ok`（幂等）。
 - `health_check` 仅探测 baas base_url 可达性，不依赖真实 `transfer_id`。
 - 会话隔离：`oss_key` 由 BCS 派生、含 `session_id`/`file_id`，不同会话对象路径天然隔离；BCS 列表
   权威来自自身 DB（不用 `GET /staging`），共享同一 service bot 不影响会话隔离性。
-- 错误映射、`UploadHandle`/`StorageHandle` 形态、身份/租户、配置、测试、分段细节均见 baas 插件文档。
+- 客户端直传 OSS 要求客户端能网络可达 OSS（baas「第四通道」前提）；仅能连 BCS 的客户端应使用
+  `supports_presign_put=false` 后端（local）。跨主机 PUT 时客户端剥离 `Authorization`，OSS 预签名 URL 自带签名。
+- 错误映射、`UploadHandle`/`StorageHandle` 形态、完整上传流程、身份/租户、配置、测试、分段细节均见 baas 插件文档。
 
 ## 3.3 未来后端（trait 就绪，v2+）
 
-- `bcs-storage-oss`：`supports_presign_download = true`；`prepare_upload` 发 OSS 直传 URL
-  （单片），大文件走 multipart init 并在 `stream_upload`/`complete_upload` 编排分片；
+- `bcs-storage-oss`：`supports_presign_put = true` + `supports_presign_download = true`；`prepare_upload`
+  发 OSS 直传 URL（单片）/ OSS multipart init（分段）作为 `client_target: Direct{...}`，客户端直传；
+  `complete_upload` 调 OSS complete-multipart；`delete` 删对象；`list` 不使用（BCS 从 DB 列）。
   `delete` 删对象；`list` 不使用（BCS 从 DB 列）。
 - `bcs-storage-nas`：`supports_presign_download = false`；通过挂载的 NFS 路径流式，对标
   `bcs-storage-local`（temp + rename）。

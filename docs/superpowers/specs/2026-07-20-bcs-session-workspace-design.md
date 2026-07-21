@@ -42,7 +42,7 @@ baas 后端的实现细节见 `2026-07-20-bcs-session-workspace-design-baas-plug
 
 | 决策项 | 选择 |
 |---|---|
-| 字节流路径 | **上传一律 BCS 三阶段代理。** 客户端始终 `POST /files`(prepare)→PUT 到 BCS 给的 `upload_url`→`POST /complete`，上传链接统一由 BCS 提供、字节经 BCS；具体后端实现（本地落盘 / baas 流式转发到 OSS 直传 URL）由 `StoragePlugin` 决定，对客户端不可见。下载侧保留能力差异：预签名后端 302 直连签名 URL（字节不经 BCS），本地后端流式返回。 |
+| 字节流路径 | **上传 capability-hybrid：** 客户端始终 `POST /files`(prepare)→PUT 到 BCS 返回的 `upload_url`→`POST /complete`，协议统一；但 `upload_url` 指向随后端能力而异 —— presign 后端（baas/OSS，`supports_presign_put=true`）返回后端真直传 URL，客户端 PUT **直连后端、字节不经 BCS**；本地后端（`supports_presign_put=false`）返回 BCS 代理 `PUT .../content`，字节经 BCS → `stream_upload`。下载侧同理：预签名后端 302 直连签名 URL（字节不经 BCS），本地后端流式返回。 |
 | 删除权限 | **上传者 + 会话创建者/驱动 bot。** 文件上传者（human 上传者、上传该文件的 bot、或拥有该 bot 的 human），或会话创建者 / 该 group 的 driver bot 可删除。其余通过会话成员校验的人可上传/下载/列出。 |
 | v1 范围 | **框架 + 本地文件系统后端（本仓库内）。** baas 后端作为独立插件 crate 设计于配套文档，后续接入。OSS/NAS 延后（通过 trait 即可接入）。 |
 | 文件生命周期 | **仅在会话删除时自动清理。** 会话完成不删除文件。v1 单片/分段阈值 ~100 MB，超限自动 multipart。 |
@@ -148,15 +148,23 @@ pub trait StoragePlugin: Send + Sync + 'static {
 `abort_upload`/`delete` 重建使用（HTTP 无状态跨请求）。`StorageError { InvalidInput, NotFound,
 Conflict, Unsupported, Backend }` 对标 `DbError`；lint 禁止泄漏后端细节。
 
-`capabilities().supports_presign_download` 仅影响下载：为 true 时 BCS 对
-`GET .../content` 返回 302 跳转到 `presign_get` 签名 URL（字节不经 BCS）；为 false 时
-BCS 用 `get_stream` 流式返回 body。上传侧不再有客户端可见的预签名能力。
+`capabilities()` 同时驱动上传与下载的字节路由：
+
+- **上传** `supports_presign_put`：true（baas/OSS）→ `prepare_upload` 返回后端真直传 URL，客户端
+  PUT 直连后端、字节不经 BCS，`stream_upload` 不被调用；false（local）→ BCS 用 `PUT .../content`
+  代理 + `stream_upload` 接收字节。
+- **下载** `supports_presign_download`：true → BCS 对 `GET .../content` 返 302 到 `presign_get`
+  签名 URL（字节不经 BCS）；false → BCS 用 `get_stream` 流式返回 body。
+
+客户端上传/下载协议在两种能力下完全一致（始终 PUT/GET BCS 返回的 URL），只是该 URL 指向后端还是
+BCS、字节是否经 BCS，客户端不感知。
 
 **本地后端（`bcs-storage-local`）实现要点：**
 
-- `supports_presign_download = false`；`max_object_size` 取**配置项**（不以动态磁盘剩余空间
-  作为静态 capability，剩余空间在 `stream_upload` 中实际校验）。
-- `prepare_upload`：单片开一个临时文件待写（`UploadHandle.backend_handle` 含
+- `supports_presign_put = false`、`supports_presign_download = false`；`max_object_size` 取**配置项**（不以动态磁盘剩余空间
+  作为静态 capability，剩余空间在 `stream_upload` 中实际校验）。上传字节经 BCS 代理（`stream_upload`）。
+- `prepare_upload`：返回 `client_target = ProxyViaBcs`（BCS 据此把 `PUT {bcs_base}/.../content` 作为
+  客户端 `upload_url`）。单片开一个临时文件（`UploadHandle.backend_handle` 含
   `{ temp_path, final_path }`）；**分段**（size ≥ 100 MB）`backend_handle` 含
   `{ final_path, parts: [{ part_number, temp_path }] }`。`temp_path` 必须包含 `file_id`（key 中
   已含）并附加随机后缀，分段时各段路径含 `part_number`，保证多客户端/多 worker 同 key 并发不冲突
@@ -179,26 +187,30 @@ baas 后端 `UploadHandle` 形态、方法→baas HTTP 映射、错误映射等�
 在 `router.rs` 中注册的会话级路由，复用 `State<HttpAppState>`、
 `resolve_group_chat_caller` 和现有会话成员校验。完整请求/响应契约见配套 API 文档。
 
-**上传一律走 BCS 三阶段、上传链接统一由 BCS 提供**，客户端不需要知道后端是什么：
+**上传走 BCS 三阶段（prepare → PUT → complete）+ 取消端点，客户端协议统一**；`upload_url` 指向随后端
+`supports_presign_put` 而异，客户端不感知、不需要知道后端是什么：
 
 1. `POST /sessions/{sid}/files`（JSON `{file_name, size, mime_type}`）→ 创建 `Pending` 的
-   `SessionFile` 行，返回 BCS 自有的 `upload_url`（指向 BCS 的 `PUT .../content`）+ `file_id`。
-2. 客户端 PUT 字节到该 `upload_url`（经 BCS）。BCS 流式接收并交给 `StoragePlugin` 的
-   `stream_upload` —— 本地直接落盘；baas 由 BCS 转发到 baas 签发的 OSS 直传 URL（流式转发，
-   不在 BCS 全量落盘，详见 baas plugin 文档）。
+   `SessionFile` 行，返回 `upload_url` + `file_id`。`upload_url`：presign 后端（baas/OSS）为后端**真直传
+   URL**；本地后端为 BCS 自有的 `PUT .../content`（字节经 BCS）。
+2. 客户端 PUT 字节到该 `upload_url`：presign 后端**直连后端、字节不经 BCS**；本地后端经 BCS →
+   `StoragePlugin::stream_upload` 落盘。
 3. `POST /sessions/{sid}/files/{file_id}/complete` 完成（本地 finalize；baas 调 complete + 轮询到
    `DONE`）。任意时刻可用 `DELETE /sessions/{sid}/files/{file_id}` 取消（`Pending`/`Failed` 时为
    abort，`Ready` 时为删除对象 + 行）。
 
-这样对外上传语义只有一种形态，三阶段 + 一个取消端点；`direct`/`proxy` 之分对客户端不可见。
-下游 `StoragePlugin` 也以统一的三阶段 trait（`prepare_upload`/`stream_upload`/
-`complete_upload`/`abort_upload`）承载，不再有面向客户端的 `presign_put`。
-下载侧保持原设计（预签名后端 302 直连签名 URL / 本地流式返回 body）。
+对外上传语义统一为三阶段 + 取消；`presign_put` 的 direct/proxy 字节路径之分对客户端不可见（始终 PUT
+BCS 返回的 URL）。下游 `StoragePlugin` 由 `prepare_upload` 返回 `PreparedUpload.client_target` 告诉 BCS
+该把哪个 URL 给客户端、字节是否经 BCS（presign 后端 `stream_upload` 不被调用）。
+下载侧同理（预签名后端 302 直连签名 URL / 本地流式返回 body）。
+
+> 客户端直传后端（presign）要求客户端网络可达后端（baas「第四通道」前提）；仅能连 BCS 的客户端用
+> local 后端。跨主机 PUT 时客户端剥离 `Authorization`，后端预签名 URL 自带签名。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
-| `POST` | `/sessions/{sid}/files` | **发起上传**（JSON），返回 BCS 自有的 `upload_url` + `file_id`，行置 `Pending`。 |
-| `PUT`  | `/sessions/{sid}/files/{file_id}/content` | **上传字节**（经 BCS）。与下载 `GET .../content` 同路径不同方法。 |
+| `POST` | `/sessions/{sid}/files` | **发起上传**（JSON），返回 `upload_url`（presign 后端为后端真直传 URL，本地为 BCS 代理） + `file_id`，行置 `Pending`。 |
+| `PUT`  | `/sessions/{sid}/files/{file_id}/content` | **上传字节**（仅本地后端经 BCS；presign 后端不走此端点，客户端直传后端）。与下载 `GET .../content` 同路径不同方法。 |
 | `POST` | `/sessions/{sid}/files/{file_id}/complete` | **完成上传**（后端 finalize / complete + 轮询）。 |
 | `GET`  | `/sessions/{sid}/files` | **列文件**（分页：prefix、limit、marker）。 |
 | `GET`  | `/sessions/{sid}/files/capabilities` | **后端能力**（`{storage, presign_download, max_size}`），可选，供客户端预判下载是否直连。 |
