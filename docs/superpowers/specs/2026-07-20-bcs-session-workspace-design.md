@@ -140,10 +140,13 @@ BCS 为每个文件分配一个**全局唯一**的 `file_id`，作为客户端�
 #[async_trait]
 pub trait StoragePlugin: Send + Sync + 'static {
     fn backend_name(&self) -> &'static str;
-    fn capabilities(&self) -> StorageCapabilities;   // { supports_presign_download, ... }
+    fn capabilities(&self) -> StorageCapabilities;   // { supports_presign_put, supports_presign_download, ... }
 
     // --- 上传：BCS 三阶段，plugin 决定具体实现 -----------------------------
-    async fn prepare_upload(&self, req: UploadPrepareRequest) -> Result<UploadHandle, StorageError>;
+    // prepare 返回 PreparedUpload{ handle, client_target, expires_at }：client_target
+    // 告诉 BCS 该把哪个 URL 给客户端（presign 后端直传 URL / local 走 BCS 代理），
+    // handle 持久化到 object_handle 供 complete/abort 重建。完整契约见 api.md §3。
+    async fn prepare_upload(&self, req: UploadPrepareRequest) -> Result<PreparedUpload, StorageError>;
     // part_number: 单片恒 None；分段传对应编号（1-based）。v1 即支持分段。
     async fn stream_upload(&self, handle: &UploadHandle, part_number: Option<u16>, body: ByteStream) -> Result<(), StorageError>;
     async fn complete_upload(&self, handle: &UploadHandle) -> Result<StorageObjectMeta, StorageError>;
@@ -255,7 +258,7 @@ v1 **分段阈值 ~100 MB**：`size < 100 MB` 走单片（`mode: "single"`），
 ```
 bcs session file upload       --session <sid> --path <local> [--mime] [--name]   # 三阶段，唯一上传入口
 bcs session file list         --session <sid> [--prefix] [--limit] [--marker]
-bcs session file download     --session <sid> --file-id <> [--out <path>]
+bcs session file download     --session <sid> --file-id <> [--out <path>] [--ttl <seconds>]
 bcs session file delete       --session <sid> --file-id <>                        # 删除 / 取消
 bcs session file share        --session <sid> --file-id <> [--ttl <seconds>]      # 生成分享链接
 bcs session file capabilities --session <sid>

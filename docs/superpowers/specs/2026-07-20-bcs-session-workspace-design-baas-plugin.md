@@ -40,8 +40,9 @@ baas 不施加 BCS 会话语义 —— BCS 才是会话维度权威，BCS 自身
 - crate 名：`bcs-storage-baas`（**独立于 BCS 仓库**，仅依赖 `bcs-storage-api` trait crate）。
 - 装配：BCS 组合根（`crates/bootstrap/bcs/server.rs`）在 `storage_backend = "baas"` 时构造
   `BaasStoragePlugin` 并以 `Arc<dyn StoragePlugin>` 注入 `SessionFileService`。
-- `backend_name()` 返回 `"baas"`；`capabilities()` 返回 `supports_presign_download = true`
-  （`max_object_size` 取 baas 硬上限或配置 probe；BCS `max_file_size` 控制对外 `max_size`）。
+- `backend_name()` 返回 `"baas"`；`capabilities()` 返回 `supports_presign_put = true`（**上传字节不经 BCS**，
+  客户端直传 OSS）+ `supports_presign_download = true`（`max_object_size` 在插件 `async fn new()`
+  构造期 probe 一次并固化，不在 `capabilities()` 内做 IO；BCS `max_file_size` 控制对外 `max_size`）。
 
 ## `StoragePlugin` 方法 → baas HTTP 映射
 
@@ -156,8 +157,8 @@ baas 统一响应体 `{"code": 0, "data": {...}}`（错误 `code ≠ 0`，`detai
         handle = UploadHandle{backend:"baas", key,
                   backend_handle:{transfer_id, type:"MULTIPART", upload_session_id, oss_key, expires_at}}  // 不含 part URL
      BCS 持久化 handle 到 bcs_session_files.object_handle（小 JSON），行置 Pending
-   BCS ──201 {file_id, mode:"multipart", part_size, part_count,
-              parts:[{1, upload_url:<OSS_URL_1>, method:PUT, expires_at}, ...]}──► client   // 真 OSS URL，原样返回
+   BCS ──201 {file_id, mode:"multipart", method:"PUT", part_size, part_count, expires_at,
+              parts:[{part_number:1, upload_url:<OSS_URL_1>}, ...]}──► client   // 真 OSS URL，原样返回；method/expires_at 在最外层（见 api.md §1.2.b）
 
 2. stream（客户端直传 OSS，可并行；BCS 不参与、stream_upload 不调用）
    client ──PUT <OSS_URL_3>  ──10MB bytes──► OSS    （跨主机，客户端剥离 Authorization；OSS 签名 URL 自带 sig）
@@ -211,9 +212,11 @@ staging）；按会话/按上传者分配 baas bot 身份为后续扩展（需�
 
 **v1 已知风险（SPOF）**：所有会话的文件操作共享单一 baas service bot，该 bot 被吊销/限流/不可达即全部会话文件上传下载失败。v1 缓解：监控该 bot 配额与 baas 可达性（`health_check` + 告警），配置冗余/配额留余；按会话/按上传者分配 baas bot 身份延后（需 BCS 持有每个会话内 bot 的 baas 凭证）。
 
-baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不暴露给 BCS 上层或客户端。客户端
-只看到 BCS 的 `upload_url`（指向 BCS 自己），不会接触到 baas 的 OSS 直传 URL 或 share_url
-（share_url 仅在下载 302 时短暂暴露给客户端，且为自签名的 OSS URL，不含 baas 凭证）。
+baas 凭证（鉴权头/token）由 `bcs-storage-baas` 插件内部持有，不暴露给 BCS 上层或客户端。客户端在
+prepare 收到的 `upload_url` / `parts[].upload_url` **就是 baas 签发的真 OSS 直传 URL**（`supports_presign_put=true`，
+预设签名、自鉴权、不含 baas service-bot 凭证），客户端直接 PUT 到该 URL、字节不经 BCS。baas 的服务凭证
+始终留在插件内，不嵌进这些 URL。下载时 BCS 302 跳转的 `share_url` 同样是 OSS 预签名 GET URL（自鉴权、
+不含 baas 凭证）。即：客户端会接触 OSS 预签名 URL，但**永远接触不到 baas 的鉴权凭证**。
 
 **会话隔离性**：v1 所有会话共享同一个 service bot 的 baas staging，但 `oss_key` 由 BCS 派生、
 含 `session_id` + `file_id`（如 `file-transfers/.../{session_id}/{file_id}/{file_name}`），不同会话

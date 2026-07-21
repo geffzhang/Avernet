@@ -109,7 +109,6 @@ Base：`http://{bcs-host}/sessions/{sid}/files`
 - `max_size` = min(BCS `max_file_size` 配置, 后端 `capabilities().max_object_size`)，在 bootstrap
   阶段计算并注入 `SessionFileService`，运行时不再动态调用 `capabilities()`。**`capabilities()` 必须廉价、同步、无 IO**，返回构造期预计算的值；baas 任何 probe（`max_object_size` 等）在插件 `async fn new()` 构造时完成，不得在 `capabilities()` 内做阻塞 IO。
   注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
-  注意 100MB 仅是单片/分段阈值（`multipart_threshold`），超 100MB 走分段而非拒绝；仅超 `max_size` 才 `413`。
 
 ## 1.2 发起上传（prepare） — `POST /sessions/{sid}/files`
 
@@ -457,7 +456,7 @@ bcs session file download \
 ```
 bcs session file delete --session <sid> --file-id <id> [--token <t>] [--url <bcs-url>]
 ```
-按服务端文件状态生效：`Pending` 时取消上传，`Ready` 时删除文件。成功时打印空/确认信息。
+按服务端文件状态生效：`Pending`/`Failed` 时取消上传，`Ready` 时删除文件（与 HTTP §1.5 分流一致）。成功时打印空/确认信息。
 
 ### 2.5 `share` —— 生成分享链接
 ```
