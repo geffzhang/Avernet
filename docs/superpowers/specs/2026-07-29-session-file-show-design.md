@@ -1,63 +1,55 @@
-# Session File `show` Parameter — Inline Browser Display
+# Session 文件 `show` 参数 — 浏览器内联展示
 
-**Date:** 2026-07-29
-**Status:** Design, awaiting implementation plan
-**Author:** brainstorming session
+**日期：** 2026-07-29
+**状态：** 设计阶段，待编写实现计划
+**作者：** brainstorming 会话
 
-## Goal
+## 目标
 
-Add a `show` query parameter to the session file content endpoint so that callers
-can choose between the browser's default **display** behavior (inline) and the
-default **download** behavior (attachment):
+为 session 文件内容接口添加一个 `show` 查询参数，让调用方可以在浏览器的默认**展示**行为（inline）与默认**下载**行为（attachment）之间选择：
 
 ```
-GET /sessions/{sid}/files/{file_id}/content?show=true   // browser displays inline
-GET /sessions/{sid}/files/{file_id}/content?show=false  // browser downloads
-GET /sessions/{sid}/files/{file_id}/content             // browser downloads (default)
+GET /sessions/{sid}/files/{file_id}/content?show=true   // 浏览器内联展示
+GET /sessions/{sid}/files/{file_id}/content?show=false  // 浏览器下载
+GET /sessions/{sid}/files/{file_id}/content             // 浏览器下载（默认）
 ```
 
-Both the `local` and `baas` storage backends must support it. For `baas`, which
-serves downloads via a 302 redirect to a presigned share link, the inline vs.
-download behavior is decided by a `show` field on the baas share-link request
-body — expose that field all the way back through the storage plugin trait.
+`local` 与 `baas` 两种 storage 后端都必须支持。对于 `baas`——它通过 302 重定向到预签名的分享链接来提供下载——inline 与下载的行为由 baas share-link 请求体中的 `show` 字段决定；需要把这个字段一路暴露回 storage plugin trait。
 
-Also expose a capability so the frontend can tell whether inline display is
-supported.
+同时还要暴露一个能力（capability），让前端能判断是否支持内联展示。
 
-## Hard invariant
+## 硬性不变量
 
-The default path — `show` absent or `show=false` — changes **nothing** about
-today's behavior, byte-for-byte:
+默认路径——即 `show` 缺省或 `show=false`——对今天的行为**逐字节地**不产生任何改变：
 
-- Local stream path: identical headers (`Content-Disposition: attachment`), identical bytes.
-- Baas client request body: identical JSON to today (`{"expire_seconds","operator"}`, no `show` field).
+- Local stream 路径：相同的 header（`Content-Disposition: attachment`），相同的字节流。
+- Baas 客户端请求体：与今天相同的 JSON（`{"expire_seconds","operator"}`，没有 `show` 字段）。
 
-`show` defaults to `false` everywhere it is threaded.
+`show` 在所有被传递的位置都默认为 `false`。
 
-## Background
+## 背景
 
-All relevant code lives under `src/bcs/crates/`.
+所有相关代码都在 `src/bcs/crates/` 下。
 
-**Content endpoint.** Routed at `router.rs:421-429` as
-`get(routes::session_files::download_content)`. Handler
-`download_content` (`routes/session_files.rs:585-601`) already binds a
-`Query<DownloadQuery>` extractor but discards it (`_q`) and always calls
-`download_file_by_id(&state, &sid, &file_id, None)`.
+**内容接口。** 在 `router.rs:421-429` 以
+`get(routes::session_files::download_content)` 注册。
+Handler `download_content`（`routes/session_files.rs:585-601`）已经绑定了
+`Query<DownloadQuery>` 提取器，但把它丢弃了（`_q`），始终调用
+`download_file_by_id(&state, &sid, &file_id, None)`。
 
-**`download_file_by_id`** (`routes/session_files.rs:607-645`) has two branches
-driven by the returned `DownloadRoute.presign`:
+**`download_file_by_id`**（`routes/session_files.rs:607-645`）有两条分支，
+由返回的 `DownloadRoute.presign` 决定走哪一条：
 
-- _Presign backend (baas):_ `Redirect::to(&ticket.download_url)` — a 302 to the
-  baas `share_url`. BCS sets no `Content-Disposition` here; baas controls it
-  via the share link.
-- _Stream backend (local):_ BCS streams bytes itself and sets
-  `Content-Type` (from `file.mime_type`), `Content-Length`, and
-  `Content-Disposition: attachment; filename="<file_name>"`.
+- _Presign 后端（baas）：_ `Redirect::to(&ticket.download_url)` —— 302 重定向到
+  baas 的 `share_url`。BCS 在此不设置 `Content-Disposition`；由 baas 通过分享链接控制。
+- _Stream 后端（local）：_ BCS 自己流式输出字节，并设置
+  `Content-Type`（来自 `file.mime_type`）、`Content-Length`，以及
+  `Content-Disposition: attachment; filename="<file_name>"`。
 
-The same helper is reused by the token-authed shared-file route
-`shared_file_content` (`routes/session_files.rs:705-722`).
+同一个 helper 也被 token 鉴权的 shared-file 路由
+`shared_file_content`（`routes/session_files.rs:705-722`）复用。
 
-**`DownloadQuery`** (`routes/session_files.rs:181-187`):
+**`DownloadQuery`**（`routes/session_files.rs:181-187`）：
 ```rust
 #[derive(Debug, Deserialize, Default)]
 pub struct DownloadQuery {
@@ -66,13 +58,13 @@ pub struct DownloadQuery {
 }
 ```
 
-**Service layer.** `SessionFileService::download_route(sid, file_id, ttl_secs)`
-(`service.rs:530-571`) calls `StoragePlugin::presign_get` only when
-`supports_presign_download` is true (baas); otherwise returns
-`DownloadRoute { presign: None }` and the HTTP layer streams via `get_stream`.
-The application-facing trait lives at `application/session_files.rs:122-191`.
+**Service 层。** `SessionFileService::download_route(sid, file_id, ttl_secs)`
+（`service.rs:530-571`）仅在 `supports_presign_download` 为 true（baas）时才调用
+`StoragePlugin::presign_get`；否则返回 `DownloadRoute { presign: None }`，
+由 HTTP 层通过 `get_stream` 流式输出。
+对外暴露的 trait 位于 `application/session_files.rs:122-191`。
 
-**Storage plugin trait** (`plugin-api/bcs-storage-api/src/lib.rs:123-149`):
+**Storage plugin trait**（`plugin-api/bcs-storage-api/src/lib.rs:123-149`）：
 ```rust
 async fn presign_get(
     &self,
@@ -81,13 +73,12 @@ async fn presign_get(
     caller: Option<&ActorRef>,
 ) -> Result<PresignGetTicket, StorageError>;
 ```
-`PresignGetTicket { download_url: String, expires_at: u64 }` (same file, 90-94).
+`PresignGetTicket { download_url: String, expires_at: u64 }`（同文件，90-94 行）。
 
-`prepare_upload` on the same trait already takes a `UploadPrepareRequest` **struct**
-(upstream of `caller`) — that is the precedent we follow for the `presign_get`
-options struct.
+同一 trait 上的 `prepare_upload` 已经接收一个 `UploadPrepareRequest` **结构体**
+（位于 `caller` 之前）——这正是我们为 `presign_get` 选项结构体所遵循的先例。
 
-**`StorageCapabilities`** (`plugin-api/bcs-storage-api/src/lib.rs:23-30`):
+**`StorageCapabilities`**（`plugin-api/bcs-storage-api/src/lib.rs:23-30`）：
 ```rust
 pub struct StorageCapabilities {
     pub supports_presign_put: bool,
@@ -98,9 +89,9 @@ pub struct StorageCapabilities {
 }
 ```
 
-**Capabilities endpoint.** Routed at `router.rs:389-392`. Handler `capabilities`
-(`routes/session_files.rs:564-579`) returns `CapabilitiesView`
-(`service-api/bcs-service-api/src/application/session_files.rs:114-120`):
+**能力接口。** 在 `router.rs:389-392` 注册。Handler `capabilities`
+（`routes/session_files.rs:564-579`）返回 `CapabilitiesView`
+（`service-api/bcs-service-api/src/application/session_files.rs:114-120`）：
 ```rust
 pub struct CapabilitiesView {
     pub storage: String,
@@ -109,33 +100,33 @@ pub struct CapabilitiesView {
     pub max_size: u64,
 }
 ```
-Populated by `service.rs:195-202`.
+由 `service.rs:195-202` 填充。
 
-**Local impl.** `bcs-storage-local/src/lib.rs:399-406`. `presign_get` returns
-`StorageError::Unsupported("local")` and is never invoked
-(`supports_presign_download = false`). Local capabilities at
-`bcs-storage-local/src/lib.rs:47-53`.
+**Local 实现。** `bcs-storage-local/src/lib.rs:399-406`。`presign_get` 返回
+`StorageError::Unsupported("local")`，且永远不会被调用
+（`supports_presign_download = false`）。
+Local 能力声明在 `bcs-storage-local/src/lib.rs:47-53`。
 
-**Baas impl.** `bcs-storage-baas/src/lib.rs:301-316`. POSTs to
-`{endpoint}/api/v1/sessions/{tenant}/{session_id}/files/transfers/{transfer_id}/share-link`
-with an inline `serde_json::json!` body:
+**Baas 实现。** `bcs-storage-baas/src/lib.rs:301-316`。POST 到
+`{endpoint}/api/v1/sessions/{tenant}/{session_id}/files/transfers/{transfer_id}/share-link`，
+使用内联的 `serde_json::json!` 请求体：
 ```rust
 let body = serde_json::json!({ "expire_seconds": ttl_secs, "operator": operator_str(caller) });
 ```
-Parses `share_url` and `expires_at` out of the `data` envelope. There is **no
-typed** share-link request struct today. Baas capabilities at
-`bcs-storage-baas/src/lib.rs:31-38` (`presign_download = true`).
+从 `data` 信封中解析出 `share_url` 和 `expires_at`。当前**没有**类型化的
+share-link 请求结构体。Baas 能力声明在
+`bcs-storage-baas/src/lib.rs:31-38`（`presign_download = true`）。
 
-The baas share-link API accepts a `show` field in the request body:
+baas 的 share-link API 支持在请求体中带 `show` 字段：
 ```json
 {"expire_seconds": 3600, "show": true, "operator": "user@example.com"}
 ```
 
-## Design
+## 设计
 
-### 1. HTTP layer + local behavior
+### 1. HTTP 层 + local 行为
 
-**`DownloadQuery`** gains one field (default `false`, so absent = download):
+**`DownloadQuery`** 增加一个字段（默认 `false`，所以缺省 = 下载）：
 ```rust
 #[derive(Debug, Deserialize, Default)]
 pub struct DownloadQuery {
@@ -145,30 +136,27 @@ pub struct DownloadQuery {
 }
 ```
 
-**`download_content`** stops discarding the query: read `q.show` and pass it to
-`download_file_by_id`. **`shared_file_content`** (token-authed, same helper) does
-the same — both download paths honor `show`. (`download_content` still passes
-`None` for the TTL argument, as today.)
+**`download_content`** 不再丢弃 query：读取 `q.show` 并传给
+`download_file_by_id`。**`shared_file_content`**（token 鉴权，同一个 helper）同样处理——
+两条下载路径都尊重 `show`。（`download_content` 仍然像今天一样为 TTL 参数传 `None`。）
 
-**`download_file_by_id`** gains a `show: bool` param and threads it into both
-branches:
+**`download_file_by_id`** 增加一个 `show: bool` 参数，并把它透传到两条分支：
 
-- _baas (presign):_ forwards `show` to `download_route` → `presign_get`. Handler
-  still 302-redirects to baas's `share_url`; baas controls the inline
-  disposition via the share-link `show` field.
-- _local (stream):_ the handler picks the disposition itself:
+- _baas（presign）：_ 将 `show` 转发给 `download_route` → `presign_get`。Handler
+  依旧 302 重定向到 baas 的 `share_url`；baas 通过 share-link 的 `show` 字段控制
+  inline 的 disposition。
+- _local（stream）：_ 由 handler 自己选择 disposition：
   - `show=true` → `Content-Disposition: inline; filename="<file_name>"`
-    (filename kept so "Save As" still has a name).
-  - `show=false`/absent → `Content-Disposition: attachment; filename="<file_name>"`
-    (today's behavior, byte-identical).
-  - `Content-Type` continues to come from `file.mime_type` (already set). Inline
-    display of an unknown MIME type falls back to the browser's default — out of
-    scope to guess or override MIME.
+    （保留 filename，这样"另存为"仍有文件名可用）。
+  - `show=false`/缺省 → `Content-Disposition: attachment; filename="<file_name>"`
+    （今天的行为，逐字节一致）。
+  - `Content-Type` 继续来自 `file.mime_type`（已设置）。对未知 MIME 类型的内联展示
+    会回落到浏览器默认行为——猜测或覆盖 MIME 不在本期范围内。
 
-### 2. Service layer + `presign_get` trait/impls (option B)
+### 2. Service 层 + `presign_get` trait/实现（方案 B）
 
-**New struct** in `plugin-api/bcs-storage-api/src/lib.rs` (next to
-`PresignGetTicket`):
+**新结构体**，位于 `plugin-api/bcs-storage-api/src/lib.rs`（紧邻
+`PresignGetTicket`）：
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PresignGetOptions {
@@ -176,11 +164,11 @@ pub struct PresignGetOptions {
     pub show: bool,
 }
 ```
-`Copy` so it is passed by value. Folding the existing `ttl_secs` in (rather than
-making a speculative one-field struct) means the struct earns its keep on day
-one and future presign options are a non-breaking field add.
+`Copy` 因此按值传递。把已有的 `ttl_secs` 折叠进来（而不是搞一个投机性的单字段
+结构体）意味着该结构体在第一天就有其实用价值，且未来的 presign 选项可作为
+非破坏性的字段追加。
 
-**Trait** `presign_get` becomes:
+**Trait** `presign_get` 变为：
 ```rust
 async fn presign_get(
     &self,
@@ -189,29 +177,27 @@ async fn presign_get(
     caller: Option<&ActorRef>,
 ) -> Result<PresignGetTicket, StorageError>;
 ```
-`caller` stays separate — it is identity/audit, not a presign option, mirroring
-how `prepare_upload` keeps `caller` out of `UploadPrepareRequest`.
+`caller` 保持独立——它是身份/审计信息，不是 presign 选项，镜像了
+`prepare_upload` 把 `caller` 放在 `UploadPrepareRequest` 之外的做法。
 
-**Service.** The application-facing `download_route` signature gains
-`show: bool`:
-`download_route(&self, session_id: &str, file_id: &str, ttl_secs: Option<u64>, show: bool)`.
-Inside the presign branch, `show` is threaded into `presign_get`:
+**Service。** 对外的 `download_route` 签名增加 `show: bool`：
+`download_route(&self, session_id: &str, file_id: &str, ttl_secs: Option<u64>, show: bool)`。
+在 presign 分支内部，`show` 被透传给 `presign_get`：
 ```rust
 self.cfg.storage
     .presign_get(&handle, PresignGetOptions { ttl_secs: ttl, show }, None)
     .await
 ```
-The local/stream branch does not consume `show` at the service layer —
-disposition is applied in the HTTP handler — so `download_route` only reads
-`show` on the presign path. `opts.ttl_secs` replaces the old positional
-`ttl_secs` argument.
+local/stream 分支在 service 层并不消费 `show`——disposition 是在 HTTP handler 中
+施加的——所以 `download_route` 只在 presign 路径上读取 `show`。
+`opts.ttl_secs` 取代旧的位置参数 `ttl_secs`。
 
-**Local impl:** signature update only; body unchanged, still returns
-`StorageError::Unsupported("local")`. Never invoked
-(`supports_presign_download = false`).
+**Local 实现：** 仅更新签名；函数体不变，仍然返回
+`StorageError::Unsupported("local")`。永远不会被调用
+（`supports_presign_download = false`）。
 
-**Baas impl:** build the share-link body so the default download path's baas
-request stays byte-identical to today — include `show` only when true:
+**Baas 实现：** 构造 share-link 请求体时，让默认下载路径的 baas 请求与今天
+**逐字节**一致——仅当 `show` 为 true 时才包含 `show`：
 ```rust
 let mut body = serde_json::json!({
     "expire_seconds": opts.ttl_secs,
@@ -221,84 +207,79 @@ if opts.show {
     body["show"] = serde_json::Value::Bool(true);
 }
 ```
-The `?show=true` request thus produces
-`{"expire_seconds":N,"operator":"bcs","show":true}`; absent or `false` produces
-the unchanged `{"expire_seconds":N,"operator":"bcs"}`.
+因此 `?show=true` 请求会产生
+`{"expire_seconds":N,"operator":"bcs","show":true}`；缺省或 `false` 则产生
+未改变的 `{"expire_seconds":N,"operator":"bcs"}`。
 
-### 3. Capability + error/edge policy + testing
+### 3. 能力 + 错误/边界策略 + 测试
 
-**Capability.** `StorageCapabilities` gains `pub supports_inline_view: bool`.
-Both local and baas set it `true` — `local` achieves inline via the stream
-path's `inline` disposition, `baas` via the share-link `show` field — so it is
-a real, distinct ability from `supports_presign_download`, not a synonym.
-A future backend that cannot do inline would set it `false`.
+**能力。** `StorageCapabilities` 增加 `pub supports_inline_view: bool`。
+local 与 baas 都设为 `true`——`local` 通过 stream 路径的 `inline` disposition
+实现内联展示，`baas` 通过 share-link 的 `show` 字段实现——所以这是一项与
+`supports_presign_download` 不同、真实存在的能力，并非同义词。
+未来某个不支持内联的后端应将其设为 `false`。
 
-**Wire view.** `CapabilitiesView` gains a short-name field matching the existing
-`presign_download` style:
+**对外视图。** `CapabilitiesView` 增加一个短名字段，沿用现有
+`presign_download` 的命名风格：
 ```rust
 pub struct CapabilitiesView {
     pub storage: String,
     pub presign_upload: bool,
     pub presign_download: bool,
-    pub inline_view: bool,   // new
+    pub inline_view: bool,   // 新增
     pub max_size: u64,
 }
 ```
-`service.rs:195-202` maps it from `self.caps.supports_inline_view`.
+`service.rs:195-202` 从 `self.caps.supports_inline_view` 映射该字段。
 
-**Semantics.** The capability is _advisory for the frontend_ (e.g., show a
-"view" vs "download" button). The service does **not** gate `show` on it — it
-honors `show` regardless of the capability value. We do not add service-layer
-enforcement now (YAGNI — both backends support it).
+**语义。** 该能力_对前端而言是建议性的_（例如显示"查看"vs"下载"按钮）。
+service **不**依据它对 `show` 做门禁——无论能力值如何都会尊重 `show`。
+现在不增加 service 层的强制校验（YAGNI——两种后端都支持）。
 
-**Error handling.** No new error cases:
+**错误处理。** 不引入新的错误情形：
 
-- `show=foo` (non-boolean) deserialization → axum's `Query` extractor rejects it
-  with 400 Bad Request, the same as any other malformed query value today.
-- Baas errors keep flowing through the existing `map_storage_err`.
-- No 4xx is introduced for `show=true` on either backend.
+- `show=foo`（非布尔值）反序列化 → axum 的 `Query` 提取器会以
+  400 Bad Request 拒绝，与今天任何其他畸形 query 值的处理一致。
+- Baas 的错误继续走现有的 `map_storage_err`。
+- 不会因为任一后端上的 `show=true` 而引入 4xx。
 
-**Testing.**
+**测试。**
 
-- _HTTP/local stream:_ `?show=true` → `Content-Disposition: inline; filename="..."`;
-  `?show=false` and absent → `attachment` (regression-identical to today).
-- _HTTP/baas (mocked baas):_ `?show=true` → 302 and the share-link request body
-  contains `"show":true`; absent/`false` → body omits `show` (byte-identical to
-  today).
-- _Shared-file route:_ `?show=true&token=...` → inline disposition (local) /
-  `show` forwarded (baas).
-- _Capabilities:_ `GET .../files/capabilities` returns `inline_view: true` for
-  both backends.
-- _Service/plugin:_ `download_route` threads `show` into `PresignGetOptions`
-  (mock storage); baas `presign_get` body conditionally includes `show`; local
-  impl still `Unsupported`.
-- _Migration:_ update every existing `download_route` / `presign_get` call site
-  (including tests) to the new signatures.
+- _HTTP/local stream：_ `?show=true` → `Content-Disposition: inline; filename="..."`；
+  `?show=false` 与缺省 → `attachment`（与今天回归一致）。
+- _HTTP/baas（mock baas）：_ `?show=true` → 302 且 share-link 请求体
+  包含 `"show":true`；缺省/`false` → 请求体省略 `show`（与今天逐字节一致）。
+- _Shared-file 路由：_ `?show=true&token=...` → inline disposition（local）/
+  `show` 被转发（baas）。
+- _能力：_ `GET .../files/capabilities` 对两种后端都返回 `inline_view: true`。
+- _Service/plugin：_ `download_route` 把 `show` 透传进 `PresignGetOptions`
+  （mock storage）；baas 的 `presign_get` 请求体按条件包含 `show`；local
+  实现仍返回 `Unsupported`。
+- _迁移：_ 将现有的每个 `download_route` / `presign_get` 调用点（含测试）
+  更新到新签名。
 
-### Out of scope
+### 范围之外
 
-MIME sniffing/guessing, per-file-type viewability gating, Range requests for
-inline media, and any frontend changes. A future backend that sets
-`supports_inline_view = false` is expected to ignore `show` in its own impl
-(service-layer enforcement is deferred).
+MIME 嗅探/猜测、按文件类型的可展示性门禁、针对内联媒体的 Range 请求，以及任何
+前端改动。未来某个设置了 `supports_inline_view = false` 的后端，应在其自身实现中
+忽略 `show`（service 层的强制校验延后处理）。
 
-## Components touched
+## 涉及的组件
 
-| Layer | File | Change |
+| 层 | 文件 | 改动 |
 |---|---|---|
-| HTTP | `bcs-http/src/routes/session_files.rs` | `DownloadQuery.show`; `download_content`/`shared_file_content` read it; `download_file_by_id(show)` + inline/attachment disposition on local branch |
-| Service trait | `bcs-service-api/src/application/session_files.rs` | `download_route` gains `show: bool` |
-| Service impl | `bcs-session-file/src/service.rs` | thread `show` → `presign_get` options; `capabilities()` surfaces `inline_view` |
-| Plugin API | `bcs-storage-api/src/lib.rs` | `PresignGetOptions`; `presign_get` signature; `StorageCapabilities.supports_inline_view` |
-| Wire DTO | `bcs-service-api/src/application/session_files.rs` | `CapabilitiesView.inline_view` |
-| Baas plugin | `bcs-storage-baas/src/lib.rs` | `presign_get` new sig + conditional `show` in share-link body; `supports_inline_view=true` |
-| Local plugin | `bcs-storage-local/src/lib.rs` | `presign_get` new sig (body unchanged); `supports_inline_view=true` |
+| HTTP | `bcs-http/src/routes/session_files.rs` | `DownloadQuery.show`；`download_content`/`shared_file_content` 读取它；`download_file_by_id(show)` + 在 local 分支选择 inline/attachment disposition |
+| Service trait | `bcs-service-api/src/application/session_files.rs` | `download_route` 增加 `show: bool` |
+| Service impl | `bcs-session-file/src/service.rs` | 把 `show` 透传给 `presign_get` 选项；`capabilities()` 暴露 `inline_view` |
+| Plugin API | `bcs-storage-api/src/lib.rs` | `PresignGetOptions`；`presign_get` 签名；`StorageCapabilities.supports_inline_view` |
+| 对外 DTO | `bcs-service-api/src/application/session_files.rs` | `CapabilitiesView.inline_view` |
+| Baas 插件 | `bcs-storage-baas/src/lib.rs` | `presign_get` 新签名 + share-link 请求体中按条件带 `show`；`supports_inline_view=true` |
+| Local 插件 | `bcs-storage-local/src/lib.rs` | `presign_get` 新签名（函数体不变）；`supports_inline_view=true` |
 
-## Why not the alternatives
+## 为何不选其它方案
 
-- _A — direct `show: bool` positional param:_ smallest diff, but `presign_get(&handle, ttl, None, true)` reads poorly at call sites, and the next presign knob churns the trait signature again.
-- _C — full `PresignGetRequest {handle, opts, caller}:_ breaks the trait's positional-handle convention (`get_stream(&handle)`, `delete(&handle)`) for little gain — `handle` and `caller` are comfortably positional already.
+- _A —— 直接加 `show: bool` 位置参数：_ 改动最小，但 `presign_get(&handle, ttl, None, true)` 在调用点可读性差，且下一个 presign 旋钮又要再次改动 trait 签名。
+- _C —— 完整的 `PresignGetRequest {handle, opts, caller}`：_ 破坏了 trait 现有的位置参数 handle 约定（`get_stream(&handle)`、`delete(&handle)`），收益却很小——`handle` 和 `caller` 作为位置参数已经很好用。
 
-B matches the existing `UploadPrepareRequest` precedent and is genuinely
-extensible without being speculative (`ttl_secs` is real, `show` is the second
-option, not the first).
+B 与现有的 `UploadPrepareRequest` 先例一致，并且是真正的可扩展而非投机
+（`ttl_secs` 是真实存在的，`show` 是第二个选项，不是第一个）。
