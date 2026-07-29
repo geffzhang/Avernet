@@ -193,7 +193,7 @@ Pure refactor: replace the positional `ttl_secs: u64` arg with `PresignGetOption
 - Modify: `src/bcs/crates/plugin-api/bcs-storage-api/src/fake.rs:97` (impl)
 - Modify: `src/bcs/crates/plugins/bcs-storage-baas/src/lib.rs:301` (impl)
 - Modify: `src/bcs/crates/plugins/bcs-storage-local/src/lib.rs:399` (impl)
-- Modify: `src/bcs/crates/services/bcs-session-file/src/service.rs:550` (production caller), `:1718-1724` (`FailingDeleteStorage` delegate), `:1801-1811` (`PresignSizelessComplete` impl)
+- Modify: `src/bcs/crates/services/bcs-session-file/src/service.rs:563` (production caller), `:1718-1724` (`FailingDeleteStorage` delegate), `:1801-1811` (`PresignSizelessComplete` impl)
 - Modify: `src/bcs/crates/plugins/bcs-storage-baas/tests/presign.rs:28,40,53-54,76` (callers)
 - Modify: `src/bcs/crates/plugins/bcs-storage-local/src/lib.rs:525` (unit-test caller)
 
@@ -278,11 +278,11 @@ async fn presign_get(&self, handle: &StorageHandle, opts: PresignGetOptions, cal
 }
 ```
 
-`PresignSizelessComplete` impl (~line 1801): change signature to `opts: PresignGetOptions`; if its body references `ttl_secs` by name, use `opts.ttl_secs`. (Read the body in-file first; only change what the rename requires.)
+`PresignSizelessComplete` impl (~line 1801): change signature to `opts: PresignGetOptions`; its current body uses the positional param named `t` (e.g. `expires_at: t`), so rename that read to `opts.ttl_secs`. (Read the body in-file first; only change what the rename requires.)
 
 - [ ] **Step 5: Update the production caller in `service.rs`**
 
-At `service.rs:550` (inside `download_route`), replace:
+At `service.rs:563` (inside `download_route`), replace:
 ```rust
 .presign_get(&handle, ttl, None).await
 ```
@@ -454,7 +454,7 @@ Extends the service-layer `download_route` to accept `show` and forward it into 
 **Files:**
 - Modify: `src/bcs/crates/plugin-api/bcs-storage-api/src/fake.rs` (record opts + accessor)
 - Modify: `src/bcs/crates/service-api/bcs-service-api/src/application/session_files.rs:160-166` (`download_route` trait decl)
-- Modify: `src/bcs/crates/services/bcs-session-file/src/service.rs:530-535` (impl sig) + `:550` (forward `show`) + noop `:88-95` + test callers `:1340,1351,1367,1378`
+- Modify: `src/bcs/crates/services/bcs-session-file/src/service.rs:530-535` (impl sig) + `:563` (forward `show`) + noop `:88-95` + test callers `:1340,1351,1367,1378`
 - Modify: `src/bcs/crates/adapters/http/bcs-http/src/routes/session_files.rs:616` (production caller — pass `false` for now)
 - Test: `src/bcs/crates/services/bcs-session-file/src/service.rs` (new forwarding test near 1344)
 
@@ -570,10 +570,10 @@ async fn download_route(
     _ttl_secs: Option<u64>,
     _show: bool,
 ) -> Result<(SessionFile, DownloadRoute), SessionFileUseCaseError> {
-    Err(SessionFileUseCaseError::Internal("noop".into()))
+    Err(SessionFileUseCaseError::NotFound(NOT_SUPPORTED.into()))
 }
 ```
-(Keep the noop's existing body — only add the `_show: bool` param. Read the current body and preserve it.)
+(This is the noop's existing body, unchanged — only the `_show: bool` param is added.)
 
 - [ ] **Step 5: Forward `show` into `presign_get` in the impl**
 
