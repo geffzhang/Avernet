@@ -117,9 +117,6 @@ pub enum MessageOwnerFilter {
         })
         .await
         .expect("query public-or-mgr");
-    let mut public_or_mgr_seqs: Vec<i64> =
-        public_or_mgr.messages.iter().map(|m| m.session_seq).collect();
-    public_or_mgr_seqs.sort();
     // sys(owner=None) + mgr(owner=mgr) 命中；workerA(owner=workerA) 不返回。
     assert_eq!(public_or_mgr.messages.len(), 2);
     assert!(public_or_mgr
@@ -136,14 +133,15 @@ pub enum MessageOwnerFilter {
         .any(|m| m.owner_bot_id.as_deref() == Some("mgr")));
 ```
 
-并在 `list_session_history` 的 `Eq → only the given owner` 断言（`worker_only`，seq `[8]`）之后追加 `PublicOrOwner` 用例（同 session 的 owner 混排：奇数 seq owner=None、偶数 seq owner=`bot-w`，见既有 `list_session_history_desc_cutoff_and_cursor` 备料）：
+并在 `list_session_history` 的 `Eq → only the given owner` 断言（`worker_only`，seq `[8]`）之后追加 `PublicOrOwner` 用例。contract/repo 的种子（同 session、seqs 1-9）为：**seqs 1-6 owner=None、seq 7 owner=mgr、seq 8 owner=workerA、seq 9 owner=None**（这是 contract/repo 既有 `list_session_history` 段落实际备料，与 `memory.rs` 自己的 `s3` 种子不同——勿混用）。`PublicOrOwner("workerA")` 命中 NULL 与 owner=workerA，排除 seq 7(mgr)：
 
 ```rust
-    // PublicOrOwner("bot-w") → 公共(奇数 seq 5,3,1) + bot-w 副本(偶数 4,2)，DESC。
-    let public_or_w = repo
+    // PublicOrOwner("workerA") → 公共(NULL seqs 9,6,5,4,3,2,1) + workerA(seq 8)，DESC；
+    // seq 7(mgr) 被排除。
+    let public_or_wa = repo
         .list_session_history(
             session_id,
-            MessageOwnerFilter::PublicOrOwner("bot-w".to_string()),
+            MessageOwnerFilter::PublicOrOwner("workerA".to_string()),
             None,
             None,
             100,
@@ -151,19 +149,23 @@ pub enum MessageOwnerFilter {
         .await
         .expect("list_session_history PublicOrOwner");
     assert_eq!(
-        public_or_w
+        public_or_wa
             .messages
             .iter()
             .map(|m| m.session_seq)
             .collect::<Vec<_>>(),
-        vec![5, 4, 3, 2, 1]
+        vec![9, 8, 6, 5, 4, 3, 2, 1]
     );
-    assert!(public_or_w.messages.iter().all(|m| {
-        m.owner_bot_id.is_none() || m.owner_bot_id.as_deref() == Some("bot-w")
+    assert!(public_or_wa.messages.iter().all(|m| {
+        m.owner_bot_id.is_none() || m.owner_bot_id.as_deref() == Some("workerA")
     }));
+    assert!(
+        !public_or_wa.messages.iter().any(|m| m.session_seq == 7),
+        "mgr-owned seq 7 must NOT appear under PublicOrOwner(workerA)"
+    );
 ```
 
-> 注：contract/repo 用例同时被 mysql（经 `conformance_message_repo.rs` 的 `sqlite_message_repo_passes_contract`）与 memory 跑。`session_id`、备料 seq 与现有 `list_session_history_desc_cutoff_and_cursor` 一致（s3，奇数 NULL/偶数 bot-w）；如该 contract 用例上下文里 `session_id` 变量名不同，按既有变量名替换。
+> 注：contract/repo 用例同时被 mysql（经 `conformance_message_repo.rs` 的 `sqlite_message_repo_passes_contract`）与 memory 跑。`session_id` 变量沿用既有上下文。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -418,7 +420,67 @@ conformance helper `system_message_producer_service_contract_tests`（`contract/
     }
 ```
 
-`FixedProducer`（:1116-1129）、`FixedSendProducer`（:1139-1152）、`FixedWebSocketSendProducer`（:1162-1175）同样把返回类型改 tuple、末尾 `vec![…]` 包成 `(vec![…], None)`。这 4 个 stub 的 `kind()` 不变。
+`FixedProducer`（:1116-1129）、`FixedSendProducer`（:1139-1152）、`FixedWebSocketSendProducer`（:1162-1175）同样把返回类型改 tuple、末尾 `vec![…]` 包成 `(vec![…], None)`。这 4 个 stub 的 `kind()` 不变。显式代码：
+
+`FixedProducer`（:1116-1129）：
+```rust
+    async fn produce(
+        &self,
+        _event: &SystemMessageEvent,
+        _group: &Group,
+        _registry: &dyn BotRegistryCoreService,
+        _participants: &[Participant],
+    ) -> (Vec<SystemGroupMessage>, Option<String>) {
+        (
+            vec![SystemGroupMessage {
+                recipients: vec!["bot-provider".to_string()],
+                message: "member changed".to_string(),
+                delivery_type: DeliveryType::Inject,
+            }],
+            None,
+        )
+    }
+```
+
+`FixedSendProducer`（:1139-1152）—— **仅外包 tuple，recipient/message/delivery_type 必须保持原值**（`bot-provider` 是 `ProviderTargetRegistry` 解析为 `HttpProvider` 的唯一 bot，改 recipient 会破坏 4 个依赖 `is_http_provider()` 的用例）：
+```rust
+    async fn produce(
+        &self,
+        _event: &SystemMessageEvent,
+        _group: &Group,
+        _registry: &dyn BotRegistryCoreService,
+        _participants: &[Participant],
+    ) -> (Vec<SystemGroupMessage>, Option<String>) {
+        (
+            vec![SystemGroupMessage {
+                recipients: vec!["bot-provider".to_string()],
+                message: "member changed".to_string(),
+                delivery_type: DeliveryType::Send,
+            }],
+            None,
+        )
+    }
+```
+
+`FixedWebSocketSendProducer`（:1162-1175）—— 同样仅外包 tuple，原值 `bot-ws` / `"member changed"` 不变：
+```rust
+    async fn produce(
+        &self,
+        _event: &SystemMessageEvent,
+        _group: &Group,
+        _registry: &dyn BotRegistryCoreService,
+        _participants: &[Participant],
+    ) -> (Vec<SystemGroupMessage>, Option<String>) {
+        (
+            vec![SystemGroupMessage {
+                recipients: vec!["bot-ws".to_string()],
+                message: "member changed".to_string(),
+                delivery_type: DeliveryType::Send,
+            }],
+            None,
+        )
+    }
+```
 
 - [ ] **Step 6: 跑测试确认全绿（行为不变检查点）**
 
@@ -524,7 +586,7 @@ Expected: FAIL — `user_message` 仍为 `None`（T2 机械化返回 `None`）�
 
 - [ ] **Step 3: 实现**
 
-替换 `bot_left.rs` 的 `produce` 主体（:21-56）为：先算通知文本，再算 recipients，`user_message` 恒 `Some(notification)`：
+替换 `bot_left.rs` 的 `produce` 主体（:21-56）。先算通知文本，`user_message` 恒 `Some`（注意 `user_text` 需在 move 进 `SystemGroupMessage` 前 clone 给 `user_message`，否则 borrow-after-move）：
 
 ```rust
     async fn produce(
@@ -538,40 +600,6 @@ Expected: FAIL — `user_message` 仍为 `None`（T2 机械化返回 `None`）�
             return (vec![], None);
         };
 
-        let left_id = actor.bot_uuid.clone();
-        let registered = registry.get(&left_id).await;
-        let name = registered
-            .as_ref()
-            .and_then(|b| b.capabilities.name.clone())
-            .unwrap_or_else(|| left_id.clone());
-        let message = format!("{}({}) 已退出协作群", name, left_id);
-
-        let recipients: Vec<String> = participants
-            .iter()
-            .filter(|p| p.bot_uuid != left_id)
-            .filter(|p| p.is_bot())
-            .map(|p| p.bot_uuid.clone())
-            .collect();
-
-        let bot_messages = if recipients.is_empty() {
-            vec![]
-        } else {
-            vec![SystemGroupMessage {
-                recipients,
-                message,
-                delivery_type: DeliveryType::Inject,
-            }]
-        };
-        // empty recipients does NOT block user_message (last bot leaving)
-        (bot_messages, Some(message))
-    }
-```
-
-> 注意：`message` 被 move 进 `SystemGroupMessage`，但 `user_message` 需要 `Some(message)`。把 `message` 先 `clone` 或重组：上面 `vec![SystemGroupMessage { message, .. }]` 会 move。改为先构造 `let user_message = Some(message.clone());` 再用于 struct，或把 `message` clone 进 struct。实现时按：`let user_text = format!(...)`；`let user_message = Some(user_text.clone());`；struct 用 `message: user_text`。最终 `(bot_messages, user_message)`。
-
-落地写法：
-
-```rust
         let left_id = actor.bot_uuid.clone();
         let registered = registry.get(&left_id).await;
         let name = registered
@@ -596,7 +624,9 @@ Expected: FAIL — `user_message` 仍为 `None`（T2 机械化返回 `None`）�
                 delivery_type: DeliveryType::Inject,
             }]
         };
+        // empty recipients does NOT block user_message (last bot leaving)
         (bot_messages, user_message)
+    }
 ```
 
 - [ ] **Step 4: 跑测试确认通过**
@@ -1551,6 +1581,8 @@ fn depersonalized_chat_group_context(
 Run: `cd src/bcs && cargo test -p bcs-system-message --lib session_context`
 Expected: 3 个新 Chat 用例 PASS；既有 MW 用例 PASS（user_message 未断言）。
 
+> **字节级不变性验证**：重构 `initial_group_context_message` 为调用共享助手后，bot 消息的输出字符串必须与重构前**字节级一致**。既有 `session_context_test.rs` 的 MW 用例断言了 bot 消息的精确内容（含 `你是:`、`你的角色:`、`[SERVICE GROUP CONTEXT]` 等），若重构引入任何格式偏差（多余空格、换行、缩进），这些断言会立即失败。因此 Step 5 全绿即隐式验证了字节级不变性；若需额外保障，可在重构前 `git stash` 后跑一次旧测试记录 baseline 输出，重构后 diff。
+
 - [ ] **Step 6: 提交**
 
 ```bash
@@ -1812,6 +1844,8 @@ fn depersonalized_service_group_context(
 Run: `cd src/bcs && cargo test -p bcs-system-message --lib session_context`
 Expected: 全部 producer 单测 PASS（含 MW 去个性化、Chat 去个性化、既有 bot 消息字节级断言不变）。
 
+> **字节级不变性验证**：同 T9 Step 5，重构 `manager_worker_initial_message` 为调用 `mw_*_block` 共享助手后，bot 消息的输出必须与重构前字节级一致。既有 MW 用例断言了 bot 消息中 `你是:`、`你的角色: manager`/`worker`、`[协同提醒]` 等精确内容，全绿即验证不变性。特别注意 `mw_context_block`/`mw_task_block`/`mw_status_block` 的输出格式（`\n{}\n`、`\n[任务]\n{}\n[/任务]\n`、`\n{line}`）须与原内联构造完全一致，包括前导换行与尾部换行。
+
 - [ ] **Step 6: 提交**
 
 ```bash
@@ -1987,7 +2021,7 @@ async fn dispatch_bot_left_with_no_recipients_persists_zero_but_pushes_ws() {
         .with_delivery(delivery)
         .with_frontend_delivery(frontend_delivery.clone())
         .with_message_repo(message_repo.clone())
-        .register(bcs_system_message::producers::bot_left::BotLeftMessageProducer)
+        .register(crate::producers::bot_left::BotLeftMessageProducer)
         .build()
         .expect("build dispatcher");
 
@@ -2322,10 +2356,19 @@ Expected: PASS。
 
 > V1 `bcs-app-session` 的 MW authz 用例（`human_caller_can_explicitly_select_an_owned_bot_message_view` 等）走 `compute_session_history_query`：worker-a view → `Eq(worker-a)`（不变，PASS）；MW manager/driver view（若有）→ `PublicOrOwner`，但 V1 fixture 未 seed manager/driver 的 owner 副本，结果与旧 `IsNull` 一致（只见 owner=None），PASS。Chat V1 用例 owner 全为 None → `PublicOrOwner`/`IsNull` 均命中 owner=None，PASS。若某 V1 用例因新语义红，按实测调整断言（预期仅 owner 副本可见性相关，且 fixture 无此类 seed）。
 
+- [ ] **Step 5a: 更新 V1 facade 注释**
+
+`crates/application/v1/bcs-app-session/src/lib.rs` 约 :822-826 处有注释引用
+`MessageOwnerFilter` 语义（含 "incl. ManagerWorker public-only `IsNull`"），
+T12 将 MW manager 从 `IsNull` 改为 `PublicOrOwner` 后该注释过时。定位该注释，
+将 `IsNull` 相关描述更新为 `PublicOrOwner`（如 "incl. ManagerWorker
+manager-viewer `PublicOrOwner`"），保持注释与 `compute_session_history_query`
+的新行为一致。此为纯注释变更，不影响编译与测试。
+
 - [ ] **Step 6: 提交**
 
 ```bash
-git add crates/services/bcs-message/src/lib.rs
+git add crates/services/bcs-message/src/lib.rs crates/application/v1/bcs-app-session/src/lib.rs
 git commit -m "feat(bcs-message): PublicOrOwner viewer scoping in compute_session_history_query"
 ```
 

@@ -160,6 +160,12 @@ bot 消息的渲染与内容完全不变。
 3. 前端 WS 推送: `user_message` 为 `Some` 且非空时，按单条文本构造 chat event
    frame 走 `FrontendDeliveryTarget::Session` 广播;`None` 或空串时不发布。
    删除对 bot 消息列表的去重 + `"\n"` 拼接逻辑。
+   **语义变更**: 旧逻辑对多条 bot 消息按文本去重后 `"\n"` 拼接(可能产生
+   多行文本，如 SessionContext 各 bot 的 `[GROUP CONTEXT]` 拼接);
+   新逻辑恒为单条 `user_message`(由 producer 显式构造，不再拼接)。
+   若有前端消费者依赖旧的多行拼接格式(如按 `"\n"` 拆分行)，需适配；
+   但旧格式暴露了 bot 视角内容(本就是本次修复的对象)，不应有合理
+   消费者依赖它。
 4. `SystemMessageDispatchOutcome`、持久化与 WS 推送的 best-effort
    warn 错误处理不变。
 
@@ -201,7 +207,10 @@ StateMachine 语义(供老 group 接口等其余调用方使用),两组行为保
   天然排除)，公共消息仍受可见起点限制。
 - V1 `bcs-app-session` message-history facade 与本函数共享同一口径(注释已
   声明 single source of truth)，行为随本改动一并生效,spec 将其列为受影响面
-  而非另设规则。
+  而非另设规则。**注意**: `bcs-app-session/src/lib.rs:822-826` 处的注释
+  引用了 `MessageOwnerFilter` 语义(含 "incl. ManagerWorker public-only
+  `IsNull`")，T12 将 MW manager 从 `IsNull` 改为 `PublicOrOwner` 后
+  该注释将过时，实现时须同步更新。
 - 语义表述(与需求一致): bot/human 消息按 `sender_id` 区分、
   `owner_bot_id = None` 继续共享可见;system 消息 sender 恒为 `system`,
   靠 `owner_bot_id` 记录收件 bot,按 view id 正确回放。
@@ -209,6 +218,15 @@ StateMachine 语义(供老 group 接口等其余调用方使用),两组行为保
   按 `PublicOrOwner(view_bot_id)` 处理,**不校验是否群成员**
   (与既有 chat 分支不校验成员身份的行为一致);
   `view_bot_id` 的鉴权/授权边界沿用各接口现有逻辑,本 spec 不扩展。
+  **已知风险**: 该判定依赖 `human_*` 命名约定区分人与 bot——若未来
+  bot ID 也以 `human_` 开头(或人 ID 不再以 `human_` 开头)，
+  判定将出错(bot 被当作 human 返回 `IsNull` 而非 `PublicOrOwner`，
+  看不到自己的系统消息副本)。该约定源自 WS upgrade 的 cookie 认证链
+  (`crates/bootstrap/bcs/src/server.rs` 的 `ws_upgrade_handler`)，
+  变更概率低但非零；如需解耦，可在 `view_bot_id` 之外传入
+  `ActorKind` 或在 `compute_session_history_query` 增加
+  `Participant` 成员查询，但当前选择与既有 chat 分支行为一致，
+  不扩展接口。
 - 派生行为变化: `BotJoinedMessageProducer::fetch_history` 以
   `view_bot_id = driver` 调 `get_history` 为注入消息取最近 10 条历史,
   owner 过滤生效后取到的是"driver 视角"历史(公共 + driver 副本),
@@ -233,7 +251,11 @@ StateMachine 语义(供老 group 接口等其余调用方使用),两组行为保
 - 老 group 的 legacy 回退路径(group 未迁移到新存储时不经过
   `MessageRepoPort`)无法做 owner 过滤,维持现状,列为行为边界;
 - 空结果时"fallback 到 bot 自身 transcript"的分支保持原触发条件
-  (`messages.is_empty() && view_bot_id.is_some()`)。
+  (`messages.is_empty() && view_bot_id.is_some()`)。注意行为变化：
+  旧 `Any` 会返回所有消息(含他人 owner 副本)，几乎不会触发 fallback；
+  新 `PublicOrOwner` 只返回公共 + 自己的副本，当群内仅有他人 owner 副本
+  (无公共消息、无自己副本)时主查询返回空，fallback 更易触发——这是
+  预期行为(fallback 返回 bot 自身 transcript，本就不应包含他人系统消息)。
 
 ### 历史数据兼容
 
