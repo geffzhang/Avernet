@@ -80,6 +80,16 @@ async fn produce(
 
 不引入新结构体;tuple 两个元素的语义由 trait 文档注释固定。
 
+契约变更须同步更新 `bcs-test-support` 的契约 conformance helper
+(`crates/test-support/bcs-test-support/src/contract/core/mod.rs` 的
+`system_message_producer_service_contract_tests` /
+`system_message_dispatcher_service_contract_tests`,以及
+`crates/services/bcs-system-message/tests/conformance_system_message.rs`
+对应的 5 条 per-producer 与 1 条 dispatcher conformance 用例),使其具备
+签名迁移后的新语义(spec 遵从仓库 AGENTS.md 的“契约变更需匹配
+conformance 测试”约定)。该 helper 目前为 no-op(仅调用 `kind()`),
+签名改动后需与 `NoopSystemMessageProducer` 一并更新才可编译。
+
 ### 各 producer 的 `user_message`(仅 WS)规则
 
 | 事件 | user_message |
@@ -244,8 +254,9 @@ StateMachine 语义(供老 group 接口等其余调用方使用),两组行为保
 - **无需数据迁移/治理**: 兼容由 `IS NULL OR owner = ?` 谓词本身承担;
 - **已知残留**: 旧全局 system 记录中含此前 `messages[0]` 的脏内容
   (新 bot 的上下文注入、随机 bot 的"你是: xxx"),会继续对**所有**
-  bot 视角可见——它们在库中无法与新产生的公共记录区分,spec 接受该残留
-  不做治理;
+  bot 视角以及无 `view_bot_id` 的公共(bot/human)视角都可见(新旧都是
+  `owner=None`,公共视角的 `IsNull` 无法排除)——它们在库中无法与新产生
+  的公共记录区分,spec 接受该残留不做治理;
 - 由此不需要"按时间切分新旧口径"的兼容逻辑,新口径直接全量生效。
 
 ### 数据流
@@ -282,9 +293,12 @@ producer.produce() ──► (bot_messages, user_message)
 - 领域与存储: `bcs-domain` `MessageOwnerFilter` 新变体;
   `bcs-message-store` 的 `mysql.rs` / `memory.rs` 谓词实现;
 - 测试桩: `bcs-test-support` 的 `NoopSystemMessageProducer`(更新签名为
-  返回 `(vec![], None)`);
+  返回 `(vec![], None)`)与契约 conformance helper
+  (`contract/core/mod.rs`)
+  `system_message_producer_service_contract_tests` 同步更新;
   `dispatcher_test.rs` 的 `WorkerOnlySessionContextProducer`、
-  `FixedProducer`、`FixedSendProducer`、`FixedWebSocketSendProducer`;
+  `FixedProducer`、`FixedSendProducer`、`FixedWebSocketSendProducer`,以及
+  conformance 入口 `tests/conformance_system_message.rs`;
 - 调用点: `produce` 仅 dispatcher 一处真实调用，其余为单测。
 
 无 schema 变更(`owner_bot_id` 列与索引已存在)。存量数据的兼容性与已知
