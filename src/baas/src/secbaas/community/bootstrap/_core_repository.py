@@ -8,6 +8,9 @@ from secbaas.community.core.repository.bot import OrmBotRepository
 from secbaas.community.core.repository.bot_device_rel import OrmBotDeviceRelRepository
 from secbaas.community.core.repository.bot_qpm import OrmBotQpmRepository
 from secbaas.community.core.repository.bot_run import OrmBotRunRepository
+from secbaas.community.core.repository.bot_run_interaction import (
+    OrmBotRunInteractionRepository,
+)
 from secbaas.community.core.repository.bot_run_queue import OrmBotRunQueueRepository
 from secbaas.community.core.repository.bot_run_queue_chunk import (
     OrmBotRunQueueChunkRepository,
@@ -93,6 +96,11 @@ class CoreRepositoryContainer(containers.DeclarativeContainer):
         config.plugins.database.plugin_database,
         ZDAS_ORM=_orm_repo(OrmBotRunQueueRepository),
         SQLITE_ORM=_orm_repo(OrmBotRunQueueRepository),
+    )
+    bot_run_interaction_repository = providers.Selector(
+        config.plugins.database.plugin_database,
+        ZDAS_ORM=_orm_repo(OrmBotRunInteractionRepository),
+        SQLITE_ORM=_orm_repo(OrmBotRunInteractionRepository),
     )
     bot_run_queue_chunk_repository = providers.Selector(
         config.plugins.database.plugin_database,
