@@ -21,9 +21,9 @@ _TEST_SESSION_KEY = "test-session-key"
 
 def _setup_session_state(client, session_key=_TEST_SESSION_KEY):
     """Helper: register a _SessionState for a given session_key."""
-    from secbaas.community.core.service.bot_run._async_chat_client import _SessionState
+    from secbaas.community.core.service.bot_run._async_chat_client import SessionState
 
-    return client._sessions.setdefault(session_key, _SessionState())
+    return client._sessions.setdefault(session_key, SessionState())
 
 
 @pytest.fixture
@@ -1590,7 +1590,7 @@ class TestChatRequestErrorStream:
         """send_message_stream sets chat_complete when ChatRequestError is raised."""
         from secbaas.community.core.service.bot_run._async_chat_client import (
             AsyncChatClient,
-            _SessionState,
+            SessionState,
         )
         from secbaas.community.core.service.bot_run._bot_websocket_client import (
             ChatRequestError,
@@ -1606,7 +1606,7 @@ class TestChatRequestErrorStream:
 
         # Pre-register a session state so we can inspect it after the error
         sk = "sk-err"
-        state = _SessionState()
+        state = SessionState()
         client._sessions[sk] = state
 
         mock_bot_ws_instance.chat_send.side_effect = ChatRequestError(
@@ -1802,7 +1802,7 @@ class TestBotSessionError:
         """send_message_stream sets chat_complete when ChatRequestError is raised."""
         from secbaas.community.core.service.bot_run._async_chat_client import (
             AsyncChatClient,
-            _SessionState,
+            SessionState,
         )
         from secbaas.community.core.service.bot_run._bot_websocket_client import (
             ChatRequestError,
@@ -1818,7 +1818,7 @@ class TestBotSessionError:
 
         # Pre-register a session state so we can inspect it after the error
         sk = "sk-err"
-        state = _SessionState()
+        state = SessionState()
         client._sessions[sk] = state
 
         mock_bot_ws_instance.chat_send.side_effect = ChatRequestError(
