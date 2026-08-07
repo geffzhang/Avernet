@@ -15,6 +15,17 @@ from agentclaw.community.core.bot_management.engines.registry import (
 )
 
 
+def test_resolve_baas_engine_bucket_routes_general_cc_by_template_type():
+    assert (
+        resolve_baas_engine_bucket(
+            engine_type="claude_code",
+            template_type="generalCC",
+            template_config=None,
+        )
+        == "aicoding"
+    )
+
+
 def test_resolve_baas_engine_bucket_uses_template_factory_identity():
     assert (
         resolve_baas_engine_bucket(
@@ -29,14 +40,14 @@ def test_resolve_baas_engine_bucket_uses_template_factory_identity():
     )
 
 
-def test_resolve_baas_engine_bucket_rejects_dirty_template_type_only_data():
+def test_resolve_baas_engine_bucket_routes_architect_by_template_type_only():
     assert (
         resolve_baas_engine_bucket(
             engine_type="claude_code",
             template_type="architect",
             template_config=None,
         )
-        == "claude_code"
+        == "aicoding"
     )
 
 

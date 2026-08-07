@@ -190,14 +190,25 @@ def test_claude_code_architect_template_maps_to_aicoding_engine():
     )
 
 
-def test_claude_code_architect_without_template_identity_stays_claude_code():
+def test_claude_code_architect_without_template_identity_maps_to_aicoding():
     assert (
         SystemConfigBaasTemplateResolver.normalize_engine_for_template(
             engine_type="claude_code",
             template_type="architect",
             template_config=None,
         )
-        == "claude_code"
+        == "aicoding"
+    )
+
+
+def test_claude_code_generalcc_template_maps_to_aicoding():
+    assert (
+        SystemConfigBaasTemplateResolver.normalize_engine_for_template(
+            engine_type="claude_code",
+            template_type="generalCC",
+            template_config=None,
+        )
+        == "aicoding"
     )
 
 

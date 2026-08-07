@@ -66,22 +66,24 @@ class AicodingProvisioningStrategy(EngineProvisioningStrategy):
         template_type: str | None,
         template_config: dict[str, Any] | None = None,
     ) -> bool:
-        """Whether this context should select the aicoding BaaS bucket."""
+        """Whether this context should select the aicoding BaaS bucket.
+
+        BaaS bucket routing is an image/runtime selection policy: all explicit
+        claude_code template-factory types except normalCC reuse the aicoding
+        BaaS template bucket. It intentionally does not require a full
+        template_config snapshot because caller/create routing may only have
+        template_type available.
+        """
+        del template_config
         if (
             cls.normalize_engine_type(active_engine, default="")
             != CLAUDE_CODE_ENGINE_TYPE
         ):
             return False
         normalized_template_type = cls.normalize_template_type(template_type)
-        if (
-            not normalized_template_type
-            or normalized_template_type == NORMAL_CC_TEMPLATE_TYPE
-        ):
-            return False
-        return cls.consumes_template_config(
-            template_type,
-            active_engine=active_engine,
-            template_config=template_config,
+        return bool(
+            normalized_template_type
+            and normalized_template_type != NORMAL_CC_TEMPLATE_TYPE
         )
 
     has_template_factory_config = staticmethod(is_template_factory_config)
