@@ -386,6 +386,7 @@ def test_claude_code_architect_template_uses_aicoding_bucket():
         bot_type="service",
         engine_type="claude_code",
         template_type="architect",
+        template_config={"template_key": "architect", "template_uid": "aicoding_bot_template"},
     )
 
     assert decision.target_provider == BAAS_DEVICE_PROVIDER
@@ -406,7 +407,7 @@ def test_claude_code_missing_template_type_keeps_claude_code_bucket():
     assert (
         ArcaBotCreateBaasRolloutPolicy.normalize_engine_bucket(
             engine_type="claude_code",
-            template_type=None,
+            template_type="",
         )
         == "claude_code"
     )

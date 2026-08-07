@@ -82,6 +82,7 @@ class _DisabledArcaBotCreateBaasRolloutPolicy:
         bot_type: str,
         engine_type: str,
         template_type: str,
+        template_config: dict[str, Any] | None = None,
     ) -> ArcaBotCreateBaasRolloutDecision:
         # 真实创建路由由 prod/local 组合根注入；占位策略不参与业务路由。
         logger.error("[ArcaBotCreateBaasRolloutPolicy] Missing injected policy")
@@ -241,6 +242,7 @@ class DeviceServiceRouter(DeviceService):
         engine_type: str | None = None,
         template_type: str | None = None,
         bot_type: str | None = None,
+        template_config: dict[str, Any] | None = None,
     ) -> DeviceService:
         """根据员工工号 + bot 属性获取新设备申请的 Provider.
 
@@ -259,12 +261,15 @@ class DeviceServiceRouter(DeviceService):
             对应的 DeviceService 实例
         """
         # 未显式指定 provider 的创建请求，交给创建期灰度策略决定走 ARCA 还是 BaaS。
-        decision = self._arca_baas_rollout_policy.decide(
-            user_id=staff_id,
-            bot_type=bot_type or "",
-            engine_type=engine_type or "openclaw",
-            template_type=template_type or "",
-        )
+        rollout_kwargs: dict[str, Any] = {
+            "user_id": staff_id,
+            "bot_type": bot_type or "",
+            "engine_type": engine_type or "openclaw",
+            "template_type": template_type or "",
+        }
+        if template_config is not None:
+            rollout_kwargs["template_config"] = template_config
+        decision = self._arca_baas_rollout_policy.decide(**rollout_kwargs)
         provider_name = decision.target_provider
 
         if provider_name in self._providers:
@@ -353,12 +358,14 @@ class DeviceServiceRouter(DeviceService):
             )
         else:
             # 普通新建不带 provider，走创建期灰度策略。
-            service = self._get_provider_for_new_device(
-                staff_id,
-                engine_type=engine,
-                template_type=template_type,
-                bot_type=bot_type,
-            )
+            provider_kwargs: dict[str, Any] = {
+                "engine_type": engine,
+                "template_type": template_type,
+                "bot_type": bot_type,
+            }
+            if template_config is not None:
+                provider_kwargs["template_config"] = template_config
+            service = self._get_provider_for_new_device(staff_id, **provider_kwargs)
             logger.info(
                 f"[apply_device] Routing to {service.__class__.__name__} for staff_id={staff_id}"
             )

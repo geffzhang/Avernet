@@ -22,7 +22,12 @@ from ..provisioning import BotProvisioningContext, EngineProvisioningStrategy
 # detected from active_engine + template_config snapshot, not by extending this
 # set with template keys.
 CODING_TEMPLATE_TYPES = frozenset({"applicationCoding", "personalCoding"})
-TEMPLATE_CONFIG_CONSUMING_ENGINES = frozenset({"aicoding", "claude_code"})
+AICODING_ENGINE_TYPE = "aicoding"
+CLAUDE_CODE_ENGINE_TYPE = "claude_code"
+NORMAL_CC_TEMPLATE_TYPE = "normalcc"
+TEMPLATE_CONFIG_CONSUMING_ENGINES = frozenset(
+    {AICODING_ENGINE_TYPE, CLAUDE_CODE_ENGINE_TYPE}
+)
 LEGACY_BOT_TYPE_ENV_MAP = {
     "personalCoding": "personal",
     "applicationCoding": "application",
@@ -40,8 +45,44 @@ class AicodingProvisioningStrategy(EngineProvisioningStrategy):
         return self._engine_type
 
     @staticmethod
+    def normalize_engine_type(
+        engine_type: str | None, *, default: str = "openclaw"
+    ) -> str:
+        return (engine_type or default).strip().lower().replace("-", "_")
+
+    @staticmethod
+    def normalize_template_type(template_type: str | None) -> str:
+        return (template_type or "").strip().lower()
+
+    @staticmethod
     def is_coding_template(template_type: str | None) -> bool:
         return template_type in CODING_TEMPLATE_TYPES
+
+    @classmethod
+    def should_use_aicoding_baas_bucket(
+        cls,
+        *,
+        active_engine: str | None,
+        template_type: str | None,
+        template_config: dict[str, Any] | None = None,
+    ) -> bool:
+        """Whether this context should select the aicoding BaaS bucket."""
+        if (
+            cls.normalize_engine_type(active_engine, default="")
+            != CLAUDE_CODE_ENGINE_TYPE
+        ):
+            return False
+        normalized_template_type = cls.normalize_template_type(template_type)
+        if (
+            not normalized_template_type
+            or normalized_template_type == NORMAL_CC_TEMPLATE_TYPE
+        ):
+            return False
+        return cls.consumes_template_config(
+            template_type,
+            active_engine=active_engine,
+            template_config=template_config,
+        )
 
     has_template_factory_config = staticmethod(is_template_factory_config)
 
@@ -66,7 +107,8 @@ class AicodingProvisioningStrategy(EngineProvisioningStrategy):
         has_template_identity = isinstance(template_config, dict) and bool(
             template_config.get("template_key") and template_config.get("template_uid")
         )
-        return active_engine in TEMPLATE_CONFIG_CONSUMING_ENGINES and has_template_identity
+        normalized_engine = cls.normalize_engine_type(active_engine, default="")
+        return normalized_engine in TEMPLATE_CONFIG_CONSUMING_ENGINES and has_template_identity
 
     def build_extra_envs(self, ctx: BotProvisioningContext) -> Dict[str, str] | None:
         template_type = ctx.template_type

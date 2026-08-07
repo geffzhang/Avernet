@@ -177,33 +177,27 @@ def test_claude_code_coding_template_maps_to_aicoding_engine():
 
 
 def test_claude_code_architect_template_maps_to_aicoding_engine():
-    resolver, _ = _resolver(
-        {
-            "selectors": [
-                {
-                    "bot_type": "service",
-                    "engine": "aicoding",
-                    "template_type": "architect",
-                    "template_uid": "aicoding_architect_template",
-                }
-            ],
-            "templates": {
-                "aicoding_architect_template": {
-                    "template_uuid": "TEMPLATE-aicoding-architect"
-                }
+    assert (
+        SystemConfigBaasTemplateResolver.normalize_engine_for_template(
+            engine_type="claude_code",
+            template_type="architect",
+            template_config={
+                "template_key": "architect",
+                "template_uid": "aicoding_bot_template",
             },
-        }
+        )
+        == "aicoding"
     )
 
+
+def test_claude_code_architect_without_template_identity_stays_claude_code():
     assert (
-        resolver.resolve_template_uid(
-            env="pre",
-            bot_type="service",
+        SystemConfigBaasTemplateResolver.normalize_engine_for_template(
             engine_type="claude_code",
             template_type="architect",
             template_config=None,
         )
-        == "aicoding_architect_template"
+        == "claude_code"
     )
 
 
@@ -221,7 +215,7 @@ def test_claude_code_missing_template_type_keeps_claude_code_engine():
     assert (
         SystemConfigBaasTemplateResolver.normalize_engine_for_template(
             engine_type="claude_code",
-            template_type=None,
+            template_type="",
         )
         == "claude_code"
     )
@@ -232,6 +226,10 @@ def test_claude_code_non_normalcc_template_type_maps_to_aicoding_case_insensitiv
         SystemConfigBaasTemplateResolver.normalize_engine_for_template(
             engine_type="claude-code",
             template_type=" Architect ",
+            template_config={
+                "template_key": "architect",
+                "template_uid": "aicoding_bot_template",
+            },
         )
         == "aicoding"
     )
