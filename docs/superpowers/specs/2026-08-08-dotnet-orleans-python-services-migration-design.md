@@ -1,110 +1,90 @@
-# .NET 10 + Orleans Python Services Migration Design
+# .NET 10 + Orleans Python 服务迁移设计
 
-## Status
+## 状态
 
-Approved on 2026-08-08.
+已于 2026-08-08 批准。
 
-## Summary
+## 摘要
 
-Replace all Python services in OCB with implementations built on .NET 10,
-ASP.NET Core, and Orleans while preserving the frontend and the Rust BCS.
-The replacement is a clean implementation inside Avernet: the sibling
-`openclaw.net/src` codebase is a design and implementation reference, not a
-runtime, source, project, or NuGet dependency.
+使用 .NET 10、ASP.NET Core 和 Orleans 重写 OCB 的全部 Python 服务，同时保留 frontend 和 Rust BCS。所有新代码都在 Avernet 内独立实现；相邻仓库 `openclaw.net/src` 仅作为设计和代码参考，不构成运行时、源码、项目或 NuGet 依赖。
 
-The migration is an overall replacement program rather than a long-term
-strangler deployment. Engineering work remains staged by module so each
-boundary can be tested before the final system-wide cutover.
+本项目采用整体替换方案，不形成长期 Strangler 部署。工程实施仍按模块和依赖顺序分阶段推进，以便在最终整体切换前分别验证每个边界。
 
-## Goals
+## 目标
 
-- Replace Python in `backend`, `engine`, `baas`, `gateway`, and `bcsfuse`.
-- Replace FastAPI and Uvicorn with ASP.NET Core and Kestrel.
-- Use Orleans for stateful identity, lifecycle, and concurrency coordination.
-- Preserve existing public HTTP, WebSocket, SSE, Service API, and Plugin API
-  contracts unless a separately reviewed contract change is approved.
-- Preserve the repository microkernel architecture and its CI enforcement.
-- Start production as a new system without importing existing user or runtime
-  records.
-- Use PostgreSQL for .NET business data and Orleans infrastructure.
-- Use MinIO for files and large objects.
-- Support SonnetDB for single-node vector search and Qdrant for clustered
-  deployments, selected at startup.
-- Keep Rust BCS on SQLite as a transitional compatibility service that can be
-  replaced by Orleans in a later project.
+- 替换 `backend`、`engine`、`baas`、`gateway` 和 `bcsfuse` 中的全部 Python 代码。
+- 使用 ASP.NET Core 和 Kestrel 替换 FastAPI 和 Uvicorn。
+- 使用 Orleans 处理具有身份、生命周期、状态和并发串行需求的协调逻辑。
+- 保持现有 HTTP、WebSocket、SSE、Service API 和 Plugin API 契约；任何变更都必须经过独立的契约评审。
+- 保持仓库现有微内核架构及其 CI 门禁。
+- 生产切换时从全新系统开始，不导入用户数据或运行历史。
+- 使用 PostgreSQL 存储 .NET 业务数据和 Orleans 基础设施数据。
+- 使用 MinIO 存储文件和大对象。
+- 单机部署使用 SonnetDB，集群部署使用 Qdrant；启动时二选一。
+- 暂时保留使用 SQLite 的 Rust BCS，并为后续 Orleans 重写预留替换边界。
 
-## Non-Goals
+## 非目标
 
-- Rewriting the Rust BCS in this project.
-- Migrating historical MySQL, SQLite, FAISS, or Qdrant data.
-- Rewriting the TypeScript frontend.
-- Rewriting OpenClaw, its BCN plugin, or the Node-based Claude Code gateway.
-- Depending on `OpenClaw.*` assemblies or copying unrelated openclaw.net
-  features such as Canvas, Dashboard, or Payments.
-- Preserving MySQL as part of the target platform.
-- Making BCS horizontally scalable during its transitional SQLite phase.
+- 本项目不重写 Rust BCS。
+- 不迁移历史 MySQL、SQLite、FAISS 或 Qdrant 数据。
+- 不重写 TypeScript frontend。
+- 不重写 OpenClaw、BCN 插件或 Node 版本的 Claude Code gateway。
+- 不依赖 `OpenClaw.*` 程序集，也不引入 Canvas、Dashboard、Payment 等与 OCB 目标无关的 openclaw.net 功能。
+- 目标平台不保留 MySQL。
+- Rust BCS 使用 SQLite 的过渡阶段不支持水平扩展。
 
-## Constraints and Sources of Truth
+## 约束与权威来源
 
-- `docs/arch/arch.rules.md` remains binding.
-- `docs/arch/ci.enforce.md` remains binding.
-- `docs/arch/context-boundary-format.md` remains the module-boundary model.
-- `docs/arch/protocol-contract-tests.md` remains the Plugin API conformance
-  model.
-- `docs/arch/service-skills-layout-wire-contract.md` remains the Skills layout
-  wire contract.
-- Existing OpenAPI, JSON Schema, WebSocket frame, SSE, and BCS protocol
-  definitions govern compatibility.
-- `openclaw.net/src` provides implementation references for .NET patterns,
-  especially channels, scheduling, composition, plugins, Skills, and tests.
+- `docs/arch/arch.rules.md` 继续作为强制架构宪法。
+- `docs/arch/ci.enforce.md` 继续作为强制 CI 规则。
+- `docs/arch/context-boundary-format.md` 继续定义模块上下文边界模型。
+- `docs/arch/protocol-contract-tests.md` 继续定义 Plugin API 一致性测试模型。
+- `docs/arch/service-skills-layout-wire-contract.md` 继续定义 Skills 布局线协议。
+- 现有 OpenAPI、JSON Schema、WebSocket 帧、SSE 和 BCS 协议定义是兼容性判断依据。
+- `openclaw.net/src` 是 .NET 代码参考，重点参考 Channels、TickerQ 调度、Gateway 组合、Plugin、Skill 和 Testing 模式。
 
-## Feasibility Decision
+## 可行性结论
 
-The migration is technically feasible and carries high engineering risk. The
-main risk is behavioral parity across roughly 2,200 Python files and the
-existing test suite, not availability of .NET libraries.
+迁移在技术上可行，但工程风险高。主要风险不是缺少 .NET 组件，而是需要在约 2,200 个 Python 文件和现有测试体系的范围内保证行为一致性。
 
-A reasonable delivery estimate is:
+合理的交付量级如下：
 
-- 8-12 experienced engineers: 18-24 months.
-- 4-6 experienced engineers: 24-36 months.
+- 8 至 12 名熟悉 C#、分布式系统和现有业务的工程师：18 至 24 个月。
+- 4 至 6 名同等经验的工程师：24 至 36 个月。
 
-The project should not commit to a six-to-twelve-month full replacement.
+不应承诺在 6 至 12 个月内完成全部替换。
 
-## Target Architecture
+## 目标架构
 
-### Runtime topology
+### 运行拓扑
 
-The target separates delivery, coordination, process execution, and durable
-infrastructure:
+目标架构将交付、协调、进程执行和持久基础设施分离：
 
 ```text
-Frontend / external clients
+Frontend / 外部客户端
           |
           | HTTP / WebSocket / SSE
           v
-Ocb.Gateway (ASP.NET Core, Orleans client)
+Ocb.Gateway（ASP.NET Core、Orleans client）
           |
           v
-Ocb.Silo (Orleans grains and application coordination)
+Ocb.Silo（Orleans Grain 与应用协调）
           |
-          +--> Ocb.Runtime.Worker --> OpenClaw / Claude Code processes
-          +--> Rust BCS over versioned HTTP/WebSocket contracts
+          +--> Ocb.Runtime.Worker --> OpenClaw / Claude Code 进程
+          +--> Rust BCS（版本化 HTTP/WebSocket 契约）
           +--> PostgreSQL
           +--> MinIO
-          +--> SonnetDB or Qdrant
-          +--> Redis when explicitly configured
+          +--> SonnetDB 或 Qdrant
+          +--> 按需启用的 Redis
 
-Ocb.Scheduler (TickerQ)
+Ocb.Scheduler（TickerQ）
           |
-          +--> PostgreSQL lease/outbox --> Orleans/application pipeline
+          +--> PostgreSQL lease/outbox --> Orleans / 应用消息管线
 ```
 
-Singlebox may place these hosts in one container, but the ownership boundaries
-remain separate. Cluster deployment uses independently scalable Gateway, Silo,
-Runtime Worker, and Scheduler processes.
+singlebox 可以将这些 Host 放入同一容器，但仍须保持进程和所有权边界。集群部署中，Gateway、Silo、Runtime Worker 和 Scheduler 分别部署和扩缩容。
 
-### Solution layout
+### Solution 目录
 
 ```text
 src/dotnet/
@@ -140,490 +120,359 @@ src/dotnet/
     Ocb.EndToEnd.Tests/
 ```
 
-All projects target `net10.0`, enable nullable reference types, use implicit
-usings, and treat warnings as errors. Package versions are pinned centrally.
-Only stable package releases verified with .NET 10 are permitted.
+全部项目目标框架为 `net10.0`，启用 nullable reference types 和 implicit usings，并将警告视为错误。依赖版本在 `Directory.Packages.props` 中集中锁定，仅允许使用已验证兼容 .NET 10 的稳定版本。
 
-NativeAOT is not an initial acceptance requirement. The openclaw.net Gateway
-uses NativeAOT, but Orleans and new infrastructure providers must not inherit
-`PublishAot=true` without an explicit compatibility test.
+NativeAOT 不是首期验收条件。虽然 openclaw.net Gateway 使用 NativeAOT，但 Orleans 和新增基础设施 Provider 在通过专项兼容测试前不得继承 `PublishAot=true`。
 
-## Architectural Boundaries
+## 架构边界
 
-### Service APIs and Plugin APIs
+### Service API 与 Plugin API
 
-- Service APIs define what consumers call in the OCB core.
-- Plugin APIs define capabilities the core calls on infrastructure providers.
-- The two contract categories remain separate projects, documentation, and
-  conformance suites.
-- Core and contracts do not reference ASP.NET Core, EF Core, Orleans
-  implementations, MinIO, SonnetDB, Qdrant, or concrete plugins.
-- Concrete implementations are selected only in composition roots.
+- Service API 定义消费者调用 OCB 核心的能力。
+- Plugin API 定义 OCB 核心调用基础设施 Provider 的能力。
+- 两类契约使用不同项目、文档和一致性测试套件。
+- Core 和 Contracts 不引用 ASP.NET Core、EF Core、Orleans 实现、MinIO、SonnetDB、Qdrant 或具体 Plugin。
+- 具体实现只能在 Composition Root 中选择。
 
-### Orleans boundary
+### Orleans 边界
 
-Orleans is an application coordination mechanism, not the domain or plugin
-architecture itself.
+Orleans 是应用协调机制，不取代领域模型和 Plugin 架构。
 
-Use a Grain only when an object has a stable identity and at least one of:
+仅当对象具有稳定身份，且至少符合以下一种情况时使用 Grain：
 
-- mutable durable state;
-- serial concurrency requirements;
-- lifecycle activation/deactivation behavior;
-- distributed coordination behavior.
+- 具有可变持久状态；
+- 需要串行处理并发命令；
+- 具有激活和停用生命周期；
+- 需要分布式协调。
 
-Examples include `BotGrain`, `SessionGrain`, `DeviceGrain`,
-`FusionJobGrain`, and `ConnectionDirectoryGrain`.
+典型 Grain 包括 `BotGrain`、`SessionGrain`、`DeviceGrain`、`FusionJobGrain` 和 `ConnectionDirectoryGrain`。
 
-Do not make HTTP forwarding, cryptography, vector queries, database access,
-file transfer, or process handles into Grains. Grain implementations call
-Service APIs and Plugin APIs and remain thin coordinators.
+HTTP 转发、密码计算、向量查询、数据库访问、文件传输和进程句柄不能建模为 Grain。Grain 实现仅作为薄协调层，通过 Service API 和 Plugin API 完成工作。
 
-### Context boundaries
+### Context Boundary
 
-Every boundary-significant C# module has machine-readable metadata equivalent
-to the existing Context Boundary format: purpose, provided contracts, consumed
-contracts, allowed internal dependencies, and change impact. Architecture tests
-enforce the dependency graph.
+每个影响架构边界的 C# 模块都必须提供与现有 Context Boundary 等价的机器可读元数据，包括职责、公开契约、消费契约、允许的内部依赖和变更影响。架构测试强制验证依赖图。
 
-## Python Service Mapping
+## Python 服务映射
 
-| Existing service | Target ownership |
+| 现有服务 | 目标职责 |
 | --- | --- |
-| `gateway` | `Ocb.Gateway`, ASP.NET Core endpoints, auth, routing, rate limits, schema catalog, telemetry |
-| `engine` | `Ocb.Runtime.Worker`, runtime API, OpenClaw/Claude Code anti-corruption layer, process and workspace lifecycle |
-| `backend` | `Ocb.Backend` services plus Bot, Session, Skill activation, and asset Grains |
-| `baas` | `Ocb.Baas` services plus Device and Template Grains and sandbox/provider plugins |
-| `bcsfuse` | `Ocb.Fusion` services plus Worker, Fusion Job, and Group Profile Grains |
+| `gateway` | `Ocb.Gateway`：ASP.NET Core endpoint、鉴权、路由、限流、Schema Catalog 和遥测 |
+| `engine` | `Ocb.Runtime.Worker`：运行时 API、OpenClaw/Claude Code 反腐层、进程和 workspace 生命周期 |
+| `backend` | `Ocb.Backend` 服务及 Bot、Session、Skill activation、asset Grain |
+| `baas` | `Ocb.Baas` 服务及 Device、Template Grain 和 sandbox/provider Plugin |
+| `bcsfuse` | `Ocb.Fusion` 服务及 Worker、Fusion Job、Group Profile Grain |
 
-The BaaS migration includes sandbox provisioning, Docker/Kubernetes providers,
-transparent `invoke-http`, API gateway behavior, QPM controls, SSE, publication,
-runtime queues, device TTL, billing controls, and third-party integration
-boundaries. These capabilities must not be reduced to only Device and Template
-CRUD.
+BaaS 迁移范围包括 sandbox provisioning、Docker/Kubernetes Provider、透明 `invoke-http`、API gateway、QPM、SSE、Bot 发布、运行队列、Device TTL、billing control 和第三方集成边界，不能被缩减为 Device 和 Template CRUD。
 
-## ASP.NET Core Replacement
+## ASP.NET Core 替换方案
 
-| Python capability | Target implementation |
+| Python 能力 | .NET 实现 |
 | --- | --- |
-| FastAPI routers | ASP.NET Core endpoint groups or controllers selected consistently per module |
+| FastAPI Router | ASP.NET Core Endpoint Group 或 Controller；每个模块统一选择一种模式 |
 | Uvicorn | Kestrel |
-| Pydantic request/response models | C# records and source-generated `System.Text.Json` contexts |
-| Pydantic validation | endpoint filters plus explicit validators |
-| Injector/dependency-injector | `Microsoft.Extensions.DependencyInjection` |
-| FastAPI middleware | ASP.NET Core middleware |
-| `HTTPException` | domain errors mapped by `IExceptionHandler` |
-| FastAPI lifespan | Generic Host lifecycle and `IHostedService` |
-| `httpx`/`aiohttp` | typed clients from `IHttpClientFactory` |
-| Python async queues | `System.Threading.Channels` |
-| SQLAlchemy | EF Core with Npgsql |
+| Pydantic DTO | C# record 和 source-generated `System.Text.Json` context |
+| Pydantic Validation | Endpoint Filter 和显式 Validator |
+| Injector / dependency-injector | `Microsoft.Extensions.DependencyInjection` |
+| FastAPI Middleware | ASP.NET Core Middleware |
+| `HTTPException` | Domain Error，经 `IExceptionHandler` 映射 |
+| FastAPI lifespan | Generic Host lifecycle 和 `IHostedService` |
+| `httpx` / `aiohttp` | `IHttpClientFactory` 创建的 typed client |
+| Python async queue | `System.Threading.Channels` |
+| SQLAlchemy | EF Core + Npgsql |
 
-Transport adapters parse authentication and protocol details, call a Service
-API, and map domain outcomes back to the existing wire contract. They do not
-own business policy.
+Delivery Adapter 只负责解析鉴权和协议数据、调用 Service API，并将领域结果映射回既有线协议，不承载业务策略。
 
-## openclaw.net Reference Policy
+## openclaw.net 参考策略
 
-The migration may study and adapt patterns from `openclaw.net/src`, but Avernet
-owns independent implementations and namespaces.
+迁移可以研究和改写 `openclaw.net/src` 中的实现模式，但 Avernet 必须拥有独立实现和命名空间。
 
-Reference areas include:
+重点参考以下区域：
 
-- `OpenClaw.Core`: abstractions, models, security, and pipeline patterns;
-- `OpenClaw.Channels`: `IChannelAdapter`, `WebSocketChannel`, and
-  `CronChannel` patterns;
-- `OpenClaw.Gateway`: endpoint validation, composition, and inbound workers;
-- `OpenClaw.PluginKit`: plugin discovery and lifecycle patterns;
-- `OpenClaw.SkillKit`: Skill models and loading patterns;
-- `OpenClaw.Testing`: test infrastructure patterns.
+- `OpenClaw.Core`：Abstractions、Models、Security 和 Pipeline；
+- `OpenClaw.Channels`：`IChannelAdapter`、`WebSocketChannel`、`CronChannel`；
+- `OpenClaw.Gateway`：endpoint validation、Composition 和 inbound worker；
+- `OpenClaw.PluginKit`：Plugin 发现和生命周期；
+- `OpenClaw.SkillKit`：Skill 模型和加载模式；
+- `OpenClaw.Testing`：测试基础设施。
 
-No `OpenClaw.*` ProjectReference or NuGet PackageReference is allowed in the
-target solution. Adapted code must use OCB contracts, naming, configuration,
-error behavior, tenancy, and tests. Third-party dependencies used by both
-codebases remain normal NuGet dependencies.
+目标 Solution 禁止引用任何 `OpenClaw.*` ProjectReference 或 NuGet 包。改写后的代码必须使用 OCB 契约、命名、配置、错误语义、租户模型和测试。两个代码库共同使用的第三方组件仍可作为正常 NuGet 依赖。
 
-## WebSocket and SSE Design
+## WebSocket 与 SSE
 
-### WebSocket channel
+### WebSocket Channel
 
-`Ocb.Channels.WebSocketChannel` follows the openclaw.net raw ASP.NET Core
-WebSocket channel model rather than SignalR. It supports:
+`Ocb.Channels.WebSocketChannel` 参考 openclaw.net 的原生 ASP.NET Core WebSocket Channel，不使用 SignalR。它必须支持：
 
-- raw text and JSON envelope modes;
-- complete message assembly across receive fragments;
-- total and per-IP connection limits;
-- per-connection message rate limits;
-- serialized sends per connection;
-- streaming response envelopes;
-- authentication identity association;
-- Origin validation;
-- clean handling of disconnects and concurrent sends.
+- raw text 和 JSON envelope 两种模式；
+- 跨 receive fragment 组装完整消息；
+- 总连接数和单 IP 连接数限制；
+- 单连接消息速率限制；
+- 每连接串行发送；
+- 流式响应 envelope；
+- 关联认证身份；
+- Origin 校验；
+- 正确处理断线和并发发送清理。
 
-External wire formats remain the existing OCB formats. openclaw.net-specific
-Canvas envelopes are not added unless a separate contract change requires
-them.
+外部 wire format 继续使用现有 OCB 格式。除非另行批准契约变更，否则不引入 openclaw.net 特有的 Canvas envelope。
 
-### Cluster routing
+### 集群路由
 
-The WebSocket object stays in the Gateway process that accepted it. It is never
-stored in Grain state.
+WebSocket 对象始终保留在接受连接的 Gateway 进程中，不能进入 Grain State。
 
-`ConnectionDirectoryGrain` records the owning Gateway instance, connection
-identifier, tenant, user, session, and lease expiry. Orleans Streams route
-outbound notifications to the owning Gateway, which sends through its local
-`WebSocketChannel` connection table. Disconnect and lease expiry remove stale
-routes.
+`ConnectionDirectoryGrain` 记录 Gateway instance、connection id、tenant、user、session 和 lease expiry。Orleans Streams 将 outbound notification 路由到拥有连接的 Gateway，由本地 `WebSocketChannel` 发送。断线和 lease 过期会清理陈旧路由。
 
-SSE uses ASP.NET Core streaming responses and follows the same authentication,
-backpressure, cancellation, and correlation rules.
+SSE 使用 ASP.NET Core streaming response，并遵守相同的鉴权、背压、取消和 correlation 规则。
 
-## Scheduling and Reliable Work
+## 调度与可靠任务
 
-TickerQ replaces APScheduler and the earlier Quartz.NET proposal. The initial
-version aligns with openclaw.net's split:
+TickerQ 替换 APScheduler，也替换早期方案中的 Quartz.NET。首期实现对齐 openclaw.net 的职责拆分：
 
-- TickerQ triggers a periodic scheduling function;
-- `CronScheduler` evaluates configured jobs, time zones, and overlap rules;
-- due work is written to the application message pipeline;
-- application workers or Grains perform the actual work.
+- TickerQ 触发周期性扫描函数；
+- `CronScheduler` 负责解析任务、时区和重叠规则；
+- 到期任务写入应用消息管线；
+- 应用 Worker 或 Grain 执行实际任务。
 
-Cluster deployments must not execute the same scan independently on every
-host. `Ocb.Scheduler.Host` acquires a PostgreSQL lease before each scheduling
-cycle. Every emitted job carries an idempotency key based on schedule identity
-and occurrence time.
+集群不能让每个 Host 独立执行同一次扫描。`Ocb.Scheduler.Host` 在每轮调度前获取 PostgreSQL lease。每个投递任务携带由 schedule identity 和 occurrence time 组成的幂等键。
 
-Use the following mechanisms for distinct semantics:
+不同时间语义分别使用：
 
-- TickerQ: user and system Cron schedules;
-- Orleans Reminders: durable Grain lifecycle reminders;
-- Orleans Timers: short-lived activation-local timing;
-- PostgreSQL outbox and worker: reliable asynchronous commands, retries, and
-  dead-letter state.
+- TickerQ：用户和系统 Cron；
+- Orleans Reminders：持久化 Grain 生命周期提醒；
+- Orleans Timers：activation 内的短周期计时；
+- PostgreSQL outbox 和 worker：可靠异步命令、重试及 dead letter。
 
-## Runtime Worker and OpenClaw Integration
+## Runtime Worker 与 OpenClaw 集成
 
-`Ocb.Runtime.Worker` owns process and filesystem resources that cannot live in
-Grain state:
+`Ocb.Runtime.Worker` 持有不能进入 Grain State 的进程和文件系统资源：
 
-- OpenClaw and Claude Code gateway processes;
-- workspace creation and cleanup;
-- port allocation;
-- process health, restart, cancellation, and shutdown;
-- stdout/stderr log capture;
-- engine WebSocket and HTTP anti-corruption adapters;
-- materialization of activated Skills.
+- OpenClaw 和 Claude Code gateway 进程；
+- workspace 创建和清理；
+- 端口分配；
+- 进程健康检查、重启、取消和关闭；
+- stdout/stderr 日志收集；
+- Engine WebSocket/HTTP 反腐适配器；
+- 已激活 Skill 的物化。
 
-`BotRuntimeGrain` coordinates desired state and assigns work to a Runtime
-Worker. Runtime Workers report observed state and use leases so another worker
-can recover an abandoned assignment. Grain state contains identifiers and
-desired/observed status, never process handles or local paths as authoritative
-business state.
+`BotRuntimeGrain` 协调 desired state 并分配 Runtime Worker。Worker 回报 observed state，并使用 lease 使其他 Worker 能接管失联任务。Grain State 只保存标识和期望/观察状态，不能把进程句柄或本地路径作为权威业务状态。
 
-## Tenancy, Identity, and Security
+## 租户、身份与安全
 
-- Tenant-scoped Grain keys include `(tenant_id, entity_id)`.
-- Tenant identity is passed explicitly in a serializable `CallerContext`; it is
-  not inferred from ambient process state.
-- Gateway authentication validates existing JWT and signed principal semantics,
-  including `X-Avernet-Principal` where required by the current contract.
-- Orleans call filters enforce caller and tenant consistency at the Grain
-  boundary.
-- PostgreSQL queries include explicit tenant predicates and database-level
-  constraints where practical.
-- API keys, model credentials, MinIO credentials, BCS secrets, and SM4 keys are
-  resolved through a Secret Plugin and never stored in Grain state.
-- Logs, traces, metrics, exceptions, and health endpoints do not reveal secrets
-  or sensitive message contents.
-- Dependency, container, and secret scanning are required CI gates.
+- tenant-scoped Grain key 使用 `(tenant_id, entity_id)`。
+- tenant identity 通过可序列化 `CallerContext` 显式传递，不能依赖 ambient process state。
+- Gateway 按既有契约验证 JWT 和 signed principal，包括需要使用的 `X-Avernet-Principal`。
+- Orleans call filter 在 Grain 边界再次校验 caller 和 tenant 一致性。
+- PostgreSQL 查询包含显式 tenant predicate，并尽可能增加数据库约束。
+- API key、模型凭据、MinIO 凭据、BCS secret 和 SM4 key 通过 Secret Plugin 解析，不能进入 Grain State。
+- 日志、trace、metric、异常和健康检查不能泄露 secret 或消息敏感正文。
+- CI 必须进行依赖、容器和 secret 扫描。
 
-## Data and Persistence
+## 数据与持久化
 
 ### PostgreSQL
 
-PostgreSQL replaces MySQL for all migrated Python services. The new system does
-not preserve the previous MySQL schema.
+PostgreSQL 替换全部迁移服务的 MySQL。新系统不保留旧 MySQL Schema。
 
-Separate schemas and roles provide ownership boundaries:
+使用独立 Schema 和数据库角色划分所有权：
 
-- `ocb_business`: EF Core business entities;
-- `ocb_orleans`: membership, reminders, and Grain persistence;
-- `ocb_jobs`: outbox, job leases, retries, and dead letters.
+- `ocb_business`：EF Core 业务实体；
+- `ocb_orleans`：membership、reminder 和 Grain persistence；
+- `ocb_jobs`：outbox、job lease、retry 和 dead letter。
 
-EF Core migrations and Orleans infrastructure migrations are separate release
-steps. Application startup validates schema compatibility but does not
-silently rewrite production schemas.
+EF Core migration 与 Orleans 基础表 migration 是不同的发布步骤。启动时验证 Schema 兼容性，但不在生产环境静默修改 Schema。
 
 ### Rust BCS SQLite
 
-Rust BCS remains a single-instance stateful service with a private SQLite file,
-WAL, busy timeout, persistent volume, and periodic backup. No .NET component
-accesses its database directly.
+Rust BCS 保持单实例有状态服务，私有 SQLite 文件启用 WAL、busy timeout、persistent volume 和周期备份。任何 .NET 组件都不能直接访问其数据库。
 
-All coordination access uses `Ocb.Bcs.Client` and the existing versioned
-HTTP/WebSocket contracts. The client implements `IBcsClient`, allowing a later
-Orleans implementation to replace Rust BCS without changing consumers. BCS
-SQLite data will not be migrated in that later project; the future replacement
-also starts fresh unless separately specified.
+所有协调访问都经过 `Ocb.Bcs.Client` 和现有版本化 HTTP/WebSocket 契约。客户端实现 `IBcsClient`，使后续 Orleans 实现可以替换 Rust BCS 而不改变消费者。未来替换时不迁移 BCS SQLite 数据，除非新的独立规格另有要求。
 
 ### MinIO
 
-MinIO stores files, Skill packages, and large objects. PostgreSQL stores object
-metadata and ownership.
+MinIO 存储文件、Skill package 和大对象，PostgreSQL 存储对象元数据和所有权。
 
-The object workflow supports multipart upload, checksum validation, size
-limits, tenant-prefixed keys, temporary object publication, signed URL expiry,
-range reads, retention, deletion compensation, and an optional malware
-scanning Plugin API. A failed metadata transaction leaves only a temporary
-object eligible for background cleanup.
+对象流程必须支持 multipart upload、checksum、大小限制、tenant key prefix、临时对象发布、signed URL 有效期、range read、retention、删除补偿和可选的 malware scanning Plugin API。元数据事务失败后，只能遗留可被后台清理的临时对象。
 
 ### Redis
 
-Redis is optional and may provide cache, distributed rate counters, or other
-explicitly non-authoritative acceleration. Correctness and durable state do not
-depend on Redis.
+Redis 是可选组件，只能用于 cache、分布式 rate counter 或其他明确的非权威加速用途。系统正确性和持久状态不能依赖 Redis。
 
-## Vector Storage
+## 向量存储
 
-`Ocb.Fusion` depends on contracts rather than a concrete vector engine:
+`Ocb.Fusion` 依赖抽象契约而不是具体向量引擎：
 
-- `IVectorStore`: collection-independent upsert, delete, get, Top-K search,
-  distance, and metadata filtering;
-- `IHybridSearchStore`: hybrid text/vector capabilities;
-- `IVectorStoreAdministration`: collection/index creation and health.
+- `IVectorStore`：upsert、delete、get、Top-K、distance 和 metadata filter；
+- `IHybridSearchStore`：文本与向量混合搜索能力；
+- `IVectorStoreAdministration`：collection/index 创建和健康检查。
 
-Implementations:
+实现包括：
 
-- `SonnetDbVectorStore`: singlebox and edge deployments;
-- `QdrantVectorStore`: clustered deployments.
+- `SonnetDbVectorStore`：singlebox 和边缘部署；
+- `QdrantVectorStore`：集群部署。
 
-Deployment selects exactly one provider at startup. Cluster profile rejects
-SonnetDB configuration. There is no permanent dual write. Both providers run
-the same conformance suite covering dimensions, distance behavior, payload
-types, filters, deterministic tie handling, Top-K limits, hybrid capability
-declaration, and error semantics.
+启动时只能选择一个 Provider，不进行长期双写。cluster profile 配置 SonnetDB 时必须拒绝启动。两个 Provider 运行同一套 conformance suite，覆盖 dimension、distance、payload type、filter、同分排序、Top-K 限制、hybrid capability 声明和错误语义。
 
-Embedding and reranker providers remain separate Plugin APIs. Vector records
-carry model and dimension metadata so incompatible embedding changes fail
-closed rather than corrupting an index.
+Embedding 与 reranker 是独立 Plugin API。向量记录携带 model 和 dimension 元数据；不兼容的 embedding 变更必须 fail closed，不能污染既有索引。
 
-## SM4 and Cryptography
+## SM4 与密码能力
 
-The target Crypto Plugin supports the BaaS SM4 use cases through
-BugFree.Security where its behavior matches the contract, with
-BouncyCastle.Cryptography available as the lower-level implementation and
-compatibility fallback. The dependency version aligns with the verified
-openclaw.net baseline when possible.
+目标 Crypto Plugin 在行为符合契约时使用 BugFree.Security 实现 BaaS 的 SM4 能力，并允许使用 BouncyCastle.Cryptography 作为底层实现和兼容回退。依赖版本应尽可能与已验证的 openclaw.net 基线对齐。
 
-Because production starts without historical ciphertext, the target format
-does not need to decrypt previous gmssl records. New known-answer, round-trip,
-invalid-key, padding, and tamper tests define the target contract. SM2 is not a
-current requirement.
+由于生产环境不保留历史密文，新实现无需解密旧 gmssl 记录。known-answer、round-trip、invalid-key、padding 和 tamper 测试定义新契约。SM2 不在当前范围。
 
-## Skills Management and Delivery
+## Skills 管理与交付
 
-The existing three source categories remain distinct:
+保留现有三种来源语义：
 
-- `git://`: repository-managed public content;
-- `local://`: uploaded user content;
-- `center://`: governed Skill Center content.
+- `git://`：Repository 管理的公共内容；
+- `local://`：用户上传内容；
+- `center://`：受治理的 Skill Center 内容。
 
-PostgreSQL stores metadata, publication, activation, and immutable manifest
-records. MinIO stores versioned Skill content and packages. The Runtime Worker
-materializes only the Skills activated for a Bot into its workspace.
+PostgreSQL 存储 metadata、publication、activation 和 immutable manifest。MinIO 存储版本化 Skill 内容和 package。Runtime Worker 只把 Bot 已激活的 Skill 物化到对应 workspace。
 
-The service Skills manifest remains engine-agnostic and preserves
-`skills-pool-p3-v1`. Backend emits the existing layout variables; runtime image
-logic maps the manifest to physical paths. A Bot never receives a bridge or
-mount to an entire Skills content store.
+Service Skills manifest 保持 engine-agnostic，并继续支持 `skills-pool-p3-v1`。Backend 输出既有布局变量，Runtime image 根据 manifest 映射物理路径。任何 Bot 都不能获得指向完整 Skills 内容仓库的 bridge 或 mount。
 
-Runtime activation and recovery are explicit workflows:
+Runtime activation 和 recovery 流程如下：
 
-1. resolve immutable Skill versions;
-2. download and verify content;
-3. materialize into a temporary workspace;
-4. atomically publish the active view;
-5. report observed activation state;
-6. reconcile again after Runtime Worker restart or reassignment.
+1. 解析不可变 Skill 版本；
+2. 下载并校验内容；
+3. 物化到临时 workspace；
+4. 原子发布 active view；
+5. 回报 observed activation state；
+6. Runtime Worker 重启或重新分配后重新 reconcile。
 
-Failures never replace a previously active workspace with a partial view. A
-transient download failure is retried three times with exponential backoff and
-jitter; an integrity failure is not retried. Resolution, verification, or
-materialization failure removes temporary content, preserves the previous
-active view, and records desired-versus-observed failure state. An atomic
-publish failure rolls back the active pointer to the previous view. If there
-is no previous view, Bot activation fails closed with an actionable error.
-Runtime Worker restart or reassignment runs the complete reconciliation again
-from authoritative desired state.
+失败不能用不完整视图替换既有 active workspace。瞬时下载错误使用 exponential backoff 和 jitter 重试三次；integrity failure 不重试。解析、校验或物化失败时删除临时内容、保留既有 active view，并记录 desired/observed failure state。原子发布失败时将 active pointer 回滚到上一个视图。没有旧视图时，Bot activation 必须 fail closed 并返回可操作错误。Runtime Worker 重启或重新分配后，从权威 desired state 重新执行完整 reconcile。
 
-The openclaw.net SkillKit is a design reference for models and loading, but OCB
-publication, source governance, and layout contracts remain authoritative.
+openclaw.net SkillKit 只作为模型和加载方式参考，OCB 的发布、来源治理和布局契约仍是权威。
 
-## Configuration and Profiles
+## 配置与 Profile
 
-Configuration uses strongly typed options with startup validation. Unknown
-keys, missing required values, and invalid provider/profile combinations fail
-startup. Raw environment reads are allowed only in configuration loading,
-composition roots, and tests.
+使用 strongly typed options 和启动校验。未知 key、缺失必填值、无效 Provider 与 Profile 组合都必须导致启动失败。只有配置加载、Composition Root 和测试可以读取原始环境变量。
 
-Required profiles:
+必须支持以下 Profile：
 
-| Profile | Topology |
+| Profile | 拓扑 |
 | --- | --- |
-| `singlebox` | Single Gateway/Silo/Worker, one Scheduler Host with TickerQ, PostgreSQL, MinIO, SonnetDB, Rust BCS with SQLite |
-| `cluster` | Multiple Gateways/Silos/Workers, one active Scheduler Host with TickerQ and PostgreSQL lease, PostgreSQL, MinIO, Qdrant, Rust BCS with SQLite |
-| `test` | Orleans TestCluster plus in-memory plugins or Testcontainers |
+| `singlebox` | 单 Gateway/Silo/Worker、一个 TickerQ Scheduler Host、PostgreSQL、MinIO、SonnetDB、使用 SQLite 的 Rust BCS |
+| `cluster` | 多 Gateway/Silo/Worker、一个持有 PostgreSQL lease 的 active TickerQ Scheduler Host、PostgreSQL、MinIO、Qdrant、使用 SQLite 的 Rust BCS |
+| `test` | Orleans TestCluster 加 InMemory Plugin 或 Testcontainers |
 
-Provider capability validation occurs before serving traffic. Production URLs,
-tokens, and private endpoints are never hardcoded.
+开始提供流量前必须验证 Provider capability。禁止硬编码生产 URL、token 和私有 endpoint。
 
-## Deployment and Packaging
+## 部署与打包
 
-Singlebox provides one user-facing container workflow while retaining process
-boundaries internally. The image includes the .NET runtime, Rust BCS binary,
-Node/OpenClaw runtime, BCN plugin, and built frontend. PostgreSQL, MinIO, and
-SonnetDB run as declared local dependencies rather than hidden embedded state.
+singlebox 提供单一用户入口容器，但内部仍保持进程边界。镜像包含 .NET runtime、Rust BCS binary、Node/OpenClaw runtime、BCN plugin 和已构建 frontend。PostgreSQL、MinIO、SonnetDB 作为显式本地依赖运行，不能成为隐藏的嵌入状态。
 
-Cluster deployment uses separate images for Gateway, Silo, Runtime Worker,
-Scheduler, and BCS. Qdrant, PostgreSQL, MinIO, and optional Redis are external
-services. BCS remains one replica while it owns SQLite.
+集群部署为 Gateway、Silo、Runtime Worker、Scheduler 和 BCS 提供独立镜像。Qdrant、PostgreSQL、MinIO 和可选 Redis 是外部服务。BCS 在持有 SQLite 期间保持单副本。
 
-Builds support x64 and arm64, official public package sources, and the existing
-China mirror switch. Community artifacts contain no corporate package,
-endpoint, credential, or source dependency.
+构建支持 x64 和 arm64、公共官方 package source 以及现有中国镜像开关。Community artifact 不能包含企业内部包、endpoint、凭据或源码依赖。
 
-## Observability
+## 可观测性
 
-OpenTelemetry covers ASP.NET Core, outbound HTTP, Orleans calls, PostgreSQL,
-Runtime Worker operations, MinIO, and vector clients. Correlation fields
-include tenant, Bot, session, request, task, and connection identifiers where
-policy permits.
+OpenTelemetry 覆盖 ASP.NET Core、outbound HTTP、Orleans call、PostgreSQL、Runtime Worker operation、MinIO 和 vector client。在策略允许时，correlation 字段包含 tenant、Bot、session、request、task 和 connection id。
 
-Required operational metrics include:
+必须提供以下运行指标：
 
-- request and WebSocket latency/error rates;
-- live and rejected WebSocket connections;
-- Orleans activation, call, and reminder health;
-- scheduler lag, duplicate suppression, queue depth, and dead letters;
-- Runtime Worker assignments, process restarts, and orphan recovery;
-- PostgreSQL pool and migration status;
-- MinIO transfer and cleanup failures;
-- vector indexing/query latency and provider health.
+- HTTP/WebSocket latency 和 error rate；
+- 当前及拒绝的 WebSocket connection；
+- Orleans activation、call 和 reminder 健康状态；
+- scheduler lag、duplicate suppression、queue depth 和 dead letter；
+- Runtime Worker assignment、process restart 和 orphan recovery；
+- PostgreSQL pool 和 migration 状态；
+- MinIO transfer 和 cleanup failure；
+- vector indexing/query latency 和 Provider health。
 
-## Testing and CI
+## 测试与 CI
 
-### Test layers
+### 测试层级
 
-- xUnit domain tests without ASP.NET Core or Orleans hosts;
-- Orleans TestCluster tests for activation, concurrency, persistence, Streams,
-  Reminders, and call filters;
-- `WebApplicationFactory` tests for HTTP, WebSocket, SSE, auth, errors, and JSON;
-- Testcontainers integration tests for PostgreSQL, MinIO, SonnetDB, Qdrant,
-  Redis, and BCS where applicable;
-- Service API and Plugin API conformance suites;
-- vector provider conformance suites;
-- Docker Compose end-to-end user stories;
-- NBomber performance and long-connection tests;
-- fault tests for process loss, Silo loss, network timeout, duplicate delivery,
-  and storage recovery.
+- 不启动 ASP.NET Core 或 Orleans Host 的 xUnit 领域测试；
+- 使用 Orleans TestCluster 验证 activation、concurrency、persistence、Streams、Reminders 和 call filter；
+- 使用 `WebApplicationFactory` 验证 HTTP、WebSocket、SSE、auth、错误和 JSON；
+- 使用 Testcontainers 验证 PostgreSQL、MinIO、SonnetDB、Qdrant、Redis 和 BCS；
+- Service API 与 Plugin API conformance suite；
+- vector Provider conformance suite；
+- Docker Compose 端到端用户故事；
+- NBomber 性能和长连接测试；
+- 进程丢失、Silo 丢失、网络超时、重复投递和存储恢复故障测试。
 
-### Required gates
+### 强制门禁
 
-- formatting, compilation, nullable analysis, and analyzers;
-- architecture dependency tests;
-- forbidden framework and environment access checks;
-- strict configuration-schema tests;
-- protocol and provider conformance tests;
-- public endpoint coverage;
-- source-generated serialization compatibility tests for contracts and Grain
-  state;
-- changed-line coverage at least as strict as the replaced module gate;
-- existing Rust BCS and frontend CI unchanged;
-- security and license scanning.
+- format、compile、nullable analysis 和 analyzer；
+- 架构依赖测试；
+- 禁止 Core 引用框架和禁止越界读取环境变量；
+- 严格配置 Schema 测试；
+- protocol 和 Provider conformance test；
+- Public endpoint coverage；
+- Contract 和 Grain State 的 source-generated serialization 兼容测试；
+- changed-line coverage 不低于被替换模块的现有门禁；
+- 保持现有 Rust BCS 和 frontend CI，不得削弱；
+- Security 和 license scanning。
 
-Contract parity tests exercise the Python baseline and .NET implementation
-against the same request/frame corpus before cutover. They compare status,
-headers where contractual, JSON shape and values, message sequencing, and
-failure behavior.
+切换前，contract parity test 使用同一 request/frame corpus 同时验证 Python 基线和 .NET 实现，并比较状态码、契约要求的 Header、JSON shape/value、消息顺序和失败行为。
 
-## Delivery Plan
+## 交付计划
 
-The overall replacement is implemented in dependency order:
+整体替换按依赖顺序实施：
 
-1. .NET solution, contracts, architecture tests, and infrastructure profiles.
-2. Protocol corpus and Python/.NET parity harness.
-3. Gateway and channel delivery surfaces.
-4. Runtime Worker and Engine anti-corruption layer.
-5. BaaS capabilities and providers.
-6. Fusion services with SonnetDB and Qdrant conformance.
-7. Backend domains, tenancy, assets, and Skills.
-8. Full integration, performance, recovery, and security validation.
-9. Maintenance-window cutover and observation.
-10. Python removal after acceptance.
+1. 建立 .NET Solution、契约、架构测试和基础设施 Profile；
+2. 建立协议 corpus 和 Python/.NET parity harness；
+3. 实现 Gateway 和 Channel 交付面；
+4. 实现 Runtime Worker 和 Engine 反腐层；
+5. 实现 BaaS 能力和 Provider；
+6. 实现 Fusion 服务及 SonnetDB/Qdrant conformance；
+7. 实现 Backend 领域、租户、asset 和 Skills；
+8. 完成集成、性能、恢复和安全验证；
+9. 在维护窗口整体切换并观察；
+10. 验收后删除 Python。
 
-Modules may be developed in parallel, but production does not enter a
-long-lived mixed Python/.NET topology. Python remains the behavioral baseline
-until the complete replacement passes acceptance.
+模块开发可以并行，但生产环境不进入长期 Python/.NET 混合拓扑。最终整体替换通过验收之前，Python 继续作为行为基线。
 
-## Cutover and Rollback
+## 切换与回退
 
-Production cutover starts a new system:
+生产切换从全新系统开始：
 
-1. freeze writes and enter a maintenance window;
-2. apply PostgreSQL business and Orleans migrations;
-3. create MinIO buckets and lifecycle rules;
-4. initialize the selected vector provider and indexes;
-5. initialize fresh BCS SQLite state;
-6. load only required system seed/configuration data;
-7. start Scheduler, Silo, Runtime Worker, Gateway, BCS, and frontend;
-8. run readiness and critical user-story checks;
-9. open traffic.
+1. 冻结写入并进入维护窗口；
+2. 应用 PostgreSQL 业务和 Orleans migration；
+3. 创建 MinIO bucket 和 lifecycle rule；
+4. 初始化所选 vector Provider 和 index；
+5. 初始化全新 BCS SQLite 状态；
+6. 仅加载必要系统 seed 和配置；
+7. 启动 Scheduler、Silo、Runtime Worker、Gateway、BCS 和 frontend；
+8. 执行 readiness 和关键用户故事；
+9. 开放流量。
 
-There is no historical data import or reverse synchronization. Before traffic
-opens, rollback restores the Python deployment. After the new system accepts
-durable writes, rollback to Python is data-lossy and is not an automatic
-option. The formal go-live decision therefore marks the cutover as
-irreversible; subsequent recovery uses the new platform's backups and fixes.
+不导入历史数据，也不进行反向同步。开放流量前可以回滚到 Python 部署。新系统开始接受持久写入后，回滚到 Python 会丢失数据，因此不能作为自动回退方案。正式 go-live 决策即代表切换不可逆；此后的恢复依赖新平台备份和修复。
 
-## Acceptance Criteria
+## 验收标准
 
-- No target service imports or requires the migrated Python packages.
-- All existing contractual HTTP, WebSocket, and SSE behaviors pass parity
-  tests or have approved versioned changes.
-- All Service API and Plugin API implementations pass conformance tests.
-- Singlebox passes with SonnetDB; cluster passes with Qdrant.
-- PostgreSQL, MinIO, vector provider, and BCS SQLite backup/restore exercises
-  pass.
-- Multi-Silo restart, Grain reactivation, Streams, Reminders, scheduler lease,
-  and Runtime Worker reassignment tests pass.
-- Critical frontend-to-backend and .NET-to-Rust-BCS user stories pass.
-- Peak-load P95 and P99 latency and throughput meet the approved Python
-  baseline; resource regressions have documented acceptance.
-- Security review confirms tenant isolation, secret handling, authorization,
-  upload controls, and dependency posture.
-- Updated singlebox, Docker, deployment, API, and contributor documentation is
-  complete.
+- 目标服务不再导入或依赖被迁移的 Python package。
+- 现有 HTTP、WebSocket 和 SSE 契约全部通过 parity test，或具备已批准的版本化变更。
+- 所有 Service API 和 Plugin API 实现通过 conformance test。
+- singlebox 使用 SonnetDB 通过验收；cluster 使用 Qdrant 通过验收。
+- PostgreSQL、MinIO、vector Provider 和 BCS SQLite 备份恢复演练通过。
+- 多 Silo 重启、Grain reactivation、Streams、Reminders、scheduler lease 和 Runtime Worker reassignment 测试通过。
+- frontend 到 backend、.NET 到 Rust BCS 的关键用户故事通过。
+- 峰值负载下 P95、P99 和吞吐满足批准的 Python 基线；资源回归具有明确的接受记录。
+- 安全评审确认租户隔离、secret handling、authorization、upload control 和 dependency posture。
+- singlebox、Docker、部署、API 和贡献者文档完成更新。
 
-## Principal Risks and Mitigations
+## 主要风险与缓解措施
 
-| Risk | Mitigation |
+| 风险 | 缓解措施 |
 | --- | --- |
-| Hidden Python behavior and test volume | Parity corpus, contract-first implementation, staged module verification |
-| Orleans overuse | Thin Grain rule and architecture tests |
-| Duplicate scheduling in cluster | Dedicated TickerQ host, PostgreSQL lease, occurrence idempotency |
-| WebSocket ownership across replicas | Local socket ownership, Connection Directory Grain, Orleans Streams |
-| Runtime process loss | Worker leases, observed state, reassignment and workspace reconciliation |
-| Skills leakage between Bots | Immutable manifests, tenant keys, per-Bot materialization, no full-store mounts |
-| Vector provider semantic drift | Shared conformance suite and capability validation |
-| BCS SQLite availability | Single-instance transitional status, WAL, persistent volume, backup |
-| Third-party library maturity | Plugin wrappers, pinned versions, contract tests, replaceable implementations |
-| Irreversible cutover after writes | Maintenance window, explicit go-live gate, new-platform recovery plan |
-| Long dual-maintenance period | Feature-freeze policy for migrated surfaces and tracked parity propagation |
+| Python 隐式行为和测试规模 | 协议 corpus、契约优先、按模块验证 |
+| Orleans 被过度使用 | Grain 薄协调规则和架构测试 |
+| 集群重复调度 | 独立 TickerQ Host、PostgreSQL lease、occurrence idempotency |
+| 多副本 WebSocket 所有权 | 本地 Socket、Connection Directory Grain、Orleans Streams |
+| Runtime 进程丢失 | Worker lease、observed state、reassignment 和 workspace reconcile |
+| Bot 之间 Skills 泄露 | immutable manifest、tenant key、按 Bot 物化、禁止完整仓库 mount |
+| Vector Provider 语义漂移 | 统一 conformance suite 和 capability validation |
+| BCS SQLite 可用性 | 明确过渡单实例、WAL、persistent volume 和备份 |
+| 第三方库成熟度 | Plugin 包装、版本锁定、契约测试和可替换实现 |
+| 写入后无法无损回滚 | 维护窗口、明确 go-live gate、新平台恢复方案 |
+| 双栈维护周期过长 | 对已迁移表面实施 feature freeze，并追踪 parity propagation |
 
-## Future BCS Replacement
+## 后续 BCS 替换
 
-The future project replaces `IBcsClient`'s Rust implementation with Orleans
-Grains for coordination, routing, groups, messages, and related state. This
-design deliberately prevents consumers from depending on BCS SQLite, process
-layout, or Rust implementation details, so the later replacement is a
-composition-root and contract-conformance change rather than another broad
-application rewrite.
+后续独立项目使用 Orleans Grain 替换 `IBcsClient` 的 Rust 实现，覆盖协调、路由、群组、消息及相关状态。本设计禁止消费者依赖 BCS SQLite、进程布局或 Rust 实现细节，使后续替换成为 Composition Root 和 contract conformance 变更，而不是再次进行应用级全面重写。
