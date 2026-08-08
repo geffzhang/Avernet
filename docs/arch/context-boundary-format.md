@@ -1,10 +1,33 @@
 # Context Boundary Format (Rule 22)
 
-Every boundary-significant module under `src/backend/src/agentclaw/`
-declares its context in a `README.md` next to the module's source, with
-a fixed `## Context Boundary` section. The arch test
-`tests/architecture/test_module_boundaries.py` parses these and
-enforces the rules below.
+Every boundary-significant module declares its context next to its source.
+Python modules under `src/backend/src/agentclaw/` use a fixed
+`## Context Boundary` section in `README.md`; .NET production projects under
+`dotnet/src/Ocb.*` use `context-boundary.json`. Architecture tests parse the
+applicable format and enforce the same dependency-whitelist principle, with
+language-specific matching: Python module prefixes and exact .NET project names.
+
+## .NET Context Boundary
+
+Every production project under `dotnet/src/Ocb.*` must contain
+`context-boundary.json` with this shape:
+
+```json
+{
+  "purpose": "One-line statement of project responsibility.",
+  "provides": ["PublicTypeName"],
+  "consumes": ["ExternalContractName"],
+  "internal_dependencies": ["Ocb.Contracts"],
+  "change_impact": "Who notices when this project changes."
+}
+```
+
+The field semantics match the Python format below. For .NET,
+`internal_dependencies` is the authoritative whitelist of project names allowed
+in `<ProjectReference>` elements. Every actual project reference must be declared;
+declared-but-unused entries remain permitted. Package restrictions are enforced
+separately by the .NET dependency-boundary tests. `change_impact` is the JSON
+equivalent of the Markdown `### Change impact` section.
 
 ## Section template
 

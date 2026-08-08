@@ -1,0 +1,5498 @@
+{
+  "components": {
+    "schemas": {
+      "ApiResponse": {
+        "description": "Canonical envelope returned by engine-adapter HTTP endpoints.\n\n`warning` is populated when the active engine services the capability with\na documented limitation (see `EngineCapabilities.limited`). Callers should\nsurface it so the user knows the response may be partial.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApiResponse",
+        "type": "object"
+      },
+      "ApprovalModeGetBody": {
+        "description": "获取审批模式请求体",
+        "properties": {
+          "session_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Key"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "title": "ApprovalModeGetBody",
+        "type": "object"
+      },
+      "ApprovalModeResponse": {
+        "description": "审批模式响应 — 与通用 ApiResponse 的区别在于失败分支携带 `error` 字段",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ApprovalModeResponse",
+        "type": "object"
+      },
+      "ApprovalModeSetBody": {
+        "description": "设置审批模式请求体",
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "session_key": {
+            "title": "Session Key",
+            "type": "string"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "session_key",
+          "mode"
+        ],
+        "title": "ApprovalModeSetBody",
+        "type": "object"
+      },
+      "BashExecRequest": {
+        "properties": {
+          "cmd": {
+            "description": "Command to execute",
+            "title": "Cmd",
+            "type": "string"
+          },
+          "cwd": {
+            "description": "Working directory (must be within allowed prefixes)",
+            "title": "Cwd",
+            "type": "string"
+          },
+          "timeout": {
+            "default": 30,
+            "description": "Timeout in seconds (max 120)",
+            "title": "Timeout",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cmd",
+          "cwd"
+        ],
+        "title": "BashExecRequest",
+        "type": "object"
+      },
+      "BindPathItem": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "BindPathItem",
+        "type": "object"
+      },
+      "BindPathRequest": {
+        "properties": {
+          "clean_target_dir": {
+            "default": true,
+            "title": "Clean Target Dir",
+            "type": "boolean"
+          },
+          "symlinks": {
+            "items": {
+              "$ref": "#/components/schemas/BindPathItem"
+            },
+            "title": "Symlinks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "symlinks"
+        ],
+        "title": "BindPathRequest",
+        "type": "object"
+      },
+      "Body_upload_file_api_file_upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          },
+          "target_path": {
+            "title": "Target Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "target_path"
+        ],
+        "title": "Body_upload_file_api_file_upload_post",
+        "type": "object"
+      },
+      "BotConfigRequest": {
+        "properties": {
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visibility"
+          }
+        },
+        "title": "BotConfigRequest",
+        "type": "object"
+      },
+      "CenterEnsureItemSchema": {
+        "properties": {
+          "skill_uuid": {
+            "title": "Skill Uuid",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "skill_uuid",
+          "version"
+        ],
+        "title": "CenterEnsureItemSchema",
+        "type": "object"
+      },
+      "CenterEnsureRequestSchema": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CenterEnsureItemSchema"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CenterEnsureRequestSchema",
+        "type": "object"
+      },
+      "CleanSymlinkRequest": {
+        "properties": {
+          "directories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Directories",
+            "type": "array"
+          }
+        },
+        "required": [
+          "directories"
+        ],
+        "title": "CleanSymlinkRequest",
+        "type": "object"
+      },
+      "CreateSessionBody": {
+        "description": "创建会话请求体",
+        "properties": {
+          "agent_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Id"
+          },
+          "engine": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Engine"
+          },
+          "extInfo": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extinfo"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "uuid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uuid"
+          }
+        },
+        "title": "CreateSessionBody",
+        "type": "object"
+      },
+      "CreateTaskRequest": {
+        "description": "创建任务请求（HTTP）",
+        "properties": {
+          "append_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "autoInitiate任务的补充说明，执行时拼接在发起消息末尾",
+            "title": "Append Message"
+          },
+          "command": {
+            "description": "要执行的命令",
+            "title": "Command",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "description": "是否启用",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "任务类型，如autoInitiate、agentTurn等，不指定时由引擎根据命令内容自动检测",
+            "title": "Kind"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "执行任务的AI模型，如gpt-4、claude-sonnet等",
+            "title": "Model"
+          },
+          "name": {
+            "description": "任务名称",
+            "title": "Name",
+            "type": "string"
+          },
+          "notify": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotifyRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "通知配置"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "执行运行的 runtime，透传给 aicoding 创建会话时使用",
+            "title": "Runtime"
+          },
+          "schedule": {
+            "description": "cron表达式，如 '0 8 * * *'",
+            "title": "Schedule",
+            "type": "string"
+          },
+          "timeout_secs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 86400,
+            "description": "任务执行超时时间（秒），默认86400",
+            "title": "Timeout Secs"
+          },
+          "timezone": {
+            "default": "Asia/Shanghai",
+            "description": "时区",
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "schedule",
+          "command"
+        ],
+        "title": "CreateTaskRequest",
+        "type": "object"
+      },
+      "EngineRestartRequest": {
+        "properties": {
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          }
+        },
+        "title": "EngineRestartRequest",
+        "type": "object"
+      },
+      "EngineSwitchRequest": {
+        "properties": {
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "force": {
+            "default": false,
+            "title": "Force",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "engine"
+        ],
+        "title": "EngineSwitchRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ListDirRequest": {
+        "properties": {
+          "dir_path": {
+            "title": "Dir Path",
+            "type": "string"
+          },
+          "recursive": {
+            "default": false,
+            "title": "Recursive",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "dir_path"
+        ],
+        "title": "ListDirRequest",
+        "type": "object"
+      },
+      "MCPCallToolRequest": {
+        "properties": {
+          "args": {
+            "description": "工具参数，如 ['url=...']",
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "description": "命令执行超时时间（秒）",
+            "title": "Timeout Seconds"
+          },
+          "tool": {
+            "description": "MCP 工具全限定名，如 mcp.ant.faas.skylarkmcpserver...skylark_resolve_url",
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tool"
+        ],
+        "title": "MCPCallToolRequest",
+        "type": "object"
+      },
+      "MCPFilterServersRequest": {
+        "properties": {
+          "server_codes": {
+            "description": "需要保留的 server_code 列表",
+            "items": {
+              "type": "string"
+            },
+            "title": "Server Codes",
+            "type": "array"
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "description": "命令执行超时时间（秒）",
+            "title": "Timeout Seconds"
+          }
+        },
+        "title": "MCPFilterServersRequest",
+        "type": "object"
+      },
+      "MCPServerCreateRequest": {
+        "properties": {
+          "args": {
+            "description": "本地启动参数",
+            "items": {
+              "type": "string"
+            },
+            "title": "Args",
+            "type": "array"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本地 MCP Server 启动命令",
+            "title": "Command"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MCP Server 描述",
+            "title": "Description"
+          },
+          "enabled": {
+            "default": true,
+            "description": "是否启用",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "环境变量",
+            "title": "Env",
+            "type": "object"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "远程请求头",
+            "title": "Headers",
+            "type": "object"
+          },
+          "server_code": {
+            "description": "MCP Server 唯一主键",
+            "title": "Server Code",
+            "type": "string"
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": 30,
+            "description": "请求超时时间（秒）",
+            "title": "Timeout Seconds"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "传输类型",
+            "title": "Transport"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "远程 MCP Server 地址",
+            "title": "Url"
+          }
+        },
+        "required": [
+          "server_code"
+        ],
+        "title": "MCPServerCreateRequest",
+        "type": "object"
+      },
+      "MCPServerOperationRequest": {
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "操作原因",
+            "title": "Reason"
+          }
+        },
+        "title": "MCPServerOperationRequest",
+        "type": "object"
+      },
+      "MCPServerUpdateRequest": {
+        "properties": {
+          "args": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "启动参数",
+            "title": "Args"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "启动命令",
+            "title": "Command"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "MCP Server 描述",
+            "title": "Description"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "是否启用",
+            "title": "Enabled"
+          },
+          "env": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "环境变量",
+            "title": "Env"
+          },
+          "headers": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "远程请求头",
+            "title": "Headers"
+          },
+          "timeout_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "请求超时时间（秒）",
+            "title": "Timeout Seconds"
+          },
+          "transport": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "传输类型",
+            "title": "Transport"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "远程 MCP Server 地址",
+            "title": "Url"
+          }
+        },
+        "title": "MCPServerUpdateRequest",
+        "type": "object"
+      },
+      "MaterializationRequest": {
+        "properties": {
+          "content_hash": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash"
+          },
+          "device_path": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Path"
+          },
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename",
+            "type": "string"
+          },
+          "resource_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "scope_key_hash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Scope Key Hash",
+            "type": "string"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "session_key_hash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Session Key Hash",
+            "type": "string"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
+          },
+          "task_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Task Id",
+            "type": "string"
+          },
+          "task_version": {
+            "minimum": 1.0,
+            "title": "Task Version",
+            "type": "integer"
+          },
+          "tenant": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant"
+          },
+          "transfer_api_version": {
+            "default": "bot_device_v1",
+            "enum": [
+              "session_v2",
+              "bot_device_v1"
+            ],
+            "title": "Transfer Api Version",
+            "type": "string"
+          },
+          "transfer_id": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Transfer Id",
+            "type": "string"
+          },
+          "uploaded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uploaded At"
+          },
+          "workspace_relative_path": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Workspace Relative Path"
+          }
+        },
+        "required": [
+          "resource_id",
+          "transfer_id",
+          "task_id",
+          "task_version",
+          "scope_key_hash",
+          "session_key_hash",
+          "filename"
+        ],
+        "title": "MaterializationRequest",
+        "type": "object"
+      },
+      "ModelsListResponse": {
+        "description": "Models list response.",
+        "properties": {
+          "data": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "success"
+        ],
+        "title": "ModelsListResponse",
+        "type": "object"
+      },
+      "NotifyRequest": {
+        "description": "通知配置请求",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "description": "是否启用通知",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "通知目标用户 ID 列表",
+            "title": "User Ids"
+          }
+        },
+        "title": "NotifyRequest",
+        "type": "object"
+      },
+      "NotifyUpdateRequest": {
+        "description": "通知配置更新请求（支持部分更新）",
+        "properties": {
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "user_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "通知目标用户 ID 列表",
+            "title": "User Ids"
+          }
+        },
+        "title": "NotifyUpdateRequest",
+        "type": "object"
+      },
+      "PoolLayoutActivateApiResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PoolLayoutActivateResponse"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "title": "PoolLayoutActivateApiResponse",
+        "type": "object"
+      },
+      "PoolLayoutActivateRequest": {
+        "properties": {
+          "mapping_contract_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Contract Version"
+          },
+          "mappings": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoolSkillMappingIntent"
+                },
+                {
+                  "$ref": "#/components/schemas/PoolPhysicalMapping"
+                }
+              ]
+            },
+            "title": "Mappings",
+            "type": "array"
+          },
+          "migration_generation": {
+            "title": "Migration Generation",
+            "type": "string"
+          },
+          "preparation_id": {
+            "title": "Preparation Id",
+            "type": "string"
+          },
+          "registered_local_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Registered Local Names",
+            "type": "array"
+          }
+        },
+        "required": [
+          "migration_generation",
+          "preparation_id",
+          "registered_local_names",
+          "mappings"
+        ],
+        "title": "PoolLayoutActivateRequest",
+        "type": "object"
+      },
+      "PoolLayoutActivateResponse": {
+        "properties": {
+          "committed": {
+            "title": "Committed",
+            "type": "boolean"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "COMMITTED",
+              "ALREADY_COMMITTED",
+              "ACTIVE_ENTRY_CONFLICT",
+              "DATA_INCONSISTENT",
+              "INVALID",
+              "TRANSIENT_ERROR",
+              "POST_CUTOVER_SYNC_PENDING",
+              "NOT_ATOMIC",
+              "UNKNOWN"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "committed",
+          "status",
+          "evidence"
+        ],
+        "title": "PoolLayoutActivateResponse",
+        "type": "object"
+      },
+      "PoolLayoutRollbackRequest": {
+        "properties": {
+          "registered_local_names": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Registered Local Names",
+            "type": "array"
+          },
+          "rollback_generation": {
+            "title": "Rollback Generation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rollback_generation",
+          "registered_local_names"
+        ],
+        "title": "PoolLayoutRollbackRequest",
+        "type": "object"
+      },
+      "PoolMappingVerifyRequest": {
+        "properties": {
+          "mapping_contract_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mapping Contract Version"
+          },
+          "mappings": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoolSkillMappingIntent"
+                },
+                {
+                  "$ref": "#/components/schemas/PoolPhysicalMapping"
+                }
+              ]
+            },
+            "title": "Mappings",
+            "type": "array"
+          },
+          "retired_mappings": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PoolSkillMappingIntent"
+                },
+                {
+                  "$ref": "#/components/schemas/PoolPhysicalMapping"
+                }
+              ]
+            },
+            "title": "Retired Mappings",
+            "type": "array"
+          },
+          "source_layout": {
+            "default": "pool",
+            "enum": [
+              "pool",
+              "legacy"
+            ],
+            "title": "Source Layout",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mappings"
+        ],
+        "title": "PoolMappingVerifyRequest",
+        "type": "object"
+      },
+      "PoolPhysicalMapping": {
+        "additionalProperties": false,
+        "description": "Strict legacy physical mapping shape for Pool endpoints.",
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "PoolPhysicalMapping",
+        "type": "object"
+      },
+      "PoolQuarantineCleanupRequest": {
+        "properties": {
+          "migration_generation": {
+            "title": "Migration Generation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "migration_generation"
+        ],
+        "title": "PoolQuarantineCleanupRequest",
+        "type": "object"
+      },
+      "PoolSkillMappingIntent": {
+        "additionalProperties": false,
+        "description": "Strict mapping-v2 logical shape.",
+        "properties": {
+          "corpus": {
+            "enum": [
+              "local",
+              "repo"
+            ],
+            "title": "Corpus",
+            "type": "string"
+          },
+          "link_name": {
+            "title": "Link Name",
+            "type": "string"
+          },
+          "relative_path": {
+            "title": "Relative Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "corpus",
+          "relative_path",
+          "link_name"
+        ],
+        "title": "PoolSkillMappingIntent",
+        "type": "object"
+      },
+      "ReadFileRequest": {
+        "properties": {
+          "file_path": {
+            "title": "File Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file_path"
+        ],
+        "title": "ReadFileRequest",
+        "type": "object"
+      },
+      "RemovePathRequest": {
+        "properties": {
+          "target_path": {
+            "title": "Target Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_path"
+        ],
+        "title": "RemovePathRequest",
+        "type": "object"
+      },
+      "RmTreeRequest": {
+        "properties": {
+          "target_path": {
+            "title": "Target Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_path"
+        ],
+        "title": "RmTreeRequest",
+        "type": "object"
+      },
+      "RunSingleAutoInitiateRequest": {
+        "description": "单个需求/工作项发起会话请求（HTTP）。",
+        "properties": {
+          "agent_id": {
+            "description": "Agent ID",
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "append_message": {
+            "default": "",
+            "description": "补充说明",
+            "title": "Append Message",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "模型覆盖",
+            "title": "Model"
+          },
+          "user_id": {
+            "description": "用户 ID",
+            "title": "User Id",
+            "type": "string"
+          },
+          "work_item_url": {
+            "description": "需求/工作项 URL",
+            "title": "Work Item Url",
+            "type": "string"
+          },
+          "workflow": {
+            "default": "",
+            "description": "工作流名称",
+            "title": "Workflow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_item_url",
+          "user_id",
+          "agent_id"
+        ],
+        "title": "RunSingleAutoInitiateRequest",
+        "type": "object"
+      },
+      "RuntimeLayoutProbeApiResponse": {
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RuntimeLayoutProbeResponse"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "success": {
+            "title": "Success",
+            "type": "boolean"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          },
+          "warning": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Warning"
+          }
+        },
+        "required": [
+          "success",
+          "data"
+        ],
+        "title": "RuntimeLayoutProbeApiResponse",
+        "type": "object"
+      },
+      "RuntimeLayoutProbeRequest": {
+        "properties": {
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "layout_contract_version": {
+            "title": "Layout Contract Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "engine",
+          "layout_contract_version"
+        ],
+        "title": "RuntimeLayoutProbeRequest",
+        "type": "object"
+      },
+      "RuntimeLayoutProbeResponse": {
+        "properties": {
+          "engine": {
+            "title": "Engine",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": true,
+            "title": "Evidence",
+            "type": "object"
+          },
+          "layout_contract_version": {
+            "title": "Layout Contract Version",
+            "type": "string"
+          },
+          "preparation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preparation Id"
+          },
+          "status": {
+            "enum": [
+              "READY",
+              "NOT_CAPABLE",
+              "TRANSIENT_ERROR",
+              "INVALID"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "engine",
+          "layout_contract_version",
+          "preparation_id",
+          "evidence"
+        ],
+        "title": "RuntimeLayoutProbeResponse",
+        "type": "object"
+      },
+      "SymlinkItem": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "target"
+        ],
+        "title": "SymlinkItem",
+        "type": "object"
+      },
+      "SyncSymlinkRequest": {
+        "properties": {
+          "symlinks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SymlinkItem"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Symlinks"
+          }
+        },
+        "title": "SyncSymlinkRequest",
+        "type": "object"
+      },
+      "UpdateTaskRequest": {
+        "description": "更新任务请求（HTTP）",
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "要执行的命令",
+            "title": "Command"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "执行任务的AI模型",
+            "title": "Model"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "notify": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NotifyUpdateRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "通知配置（支持部分更新）"
+          },
+          "runtime": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "执行运行的 runtime",
+            "title": "Runtime"
+          },
+          "schedule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule"
+          },
+          "timeout_secs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "任务执行超时时间（秒）",
+            "title": "Timeout Secs"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          }
+        },
+        "title": "UpdateTaskRequest",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ZeroCheckSwitchRequest": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ZeroCheckSwitchRequest",
+        "type": "object"
+      },
+      "ZeroCheckSwitchResponse": {
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "ZeroCheckSwitchResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "OpenClaw Engine Adapter",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/approvals/mode/get": {
+      "post": {
+        "description": "获取会话审批模式。\n\nArgs:\n    user_id: 用户 ID，用于路由到正确的设备\n    session_key: 会话标识（可选）\n\nReturns:\n    审批模式信息",
+        "operationId": "get_approval_mode_api_approvals_mode_get_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalModeGetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalModeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Approval Mode",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/mode/set": {
+      "post": {
+        "description": "设置会话审批模式。\n\nArgs:\n    user_id: 用户 ID，用于路由到正确的设备\n    session_key: 会话标识\n    mode: 审批模式 (\"approve\", \"on-miss\", \"never\")\n\nReturns:\n    设置结果",
+        "operationId": "set_approval_mode_api_approvals_mode_set_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalModeSetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalModeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Approval Mode",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/approvals/modes": {
+      "get": {
+        "description": "列出所有可用的审批模式。",
+        "operationId": "list_approval_modes_api_approvals_modes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Approval Modes",
+        "tags": [
+          "approvals"
+        ]
+      }
+    },
+    "/api/bash/exec": {
+      "post": {
+        "description": "Execute a bash command in the container workspace.",
+        "operationId": "exec_command_api_bash_exec_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BashExecRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exec Command",
+        "tags": [
+          "bash"
+        ]
+      }
+    },
+    "/api/bot/config": {
+      "post": {
+        "operationId": "update_bot_config_api_bot_config_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotConfigRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Bot Config",
+        "tags": [
+          "bot"
+        ]
+      }
+    },
+    "/api/cron": {
+      "get": {
+        "description": "获取所有定时任务列表\nGET /api/scheduled-tasks",
+        "operationId": "list_tasks_api_cron_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Tasks",
+        "tags": [
+          "cron"
+        ]
+      },
+      "post": {
+        "description": "创建定时任务\nPOST /api/scheduled-tasks",
+        "operationId": "create_task_api_cron_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Task",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/auto-initiate/run-single": {
+      "post": {
+        "description": "为单个需求/工作项直接发起会话，跳过批量查询/过滤。\n\nPOST /api/cron/auto-initiate/run-single",
+        "operationId": "run_single_auto_initiate_api_cron_auto_initiate_run_single_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunSingleAutoInitiateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Single Auto Initiate",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/running": {
+      "get": {
+        "description": "获取正在执行的任务列表\nGET /api/cron/running",
+        "operationId": "get_running_tasks_api_cron_running_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Running Tasks",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/status": {
+      "get": {
+        "description": "获取 cron 服务状态\nGET /api/scheduled-tasks/status\n\nIntentionally unguarded: this reports the cron *service*'s status (is the\npoller running, last error, etc.), not a declared engine capability.",
+        "operationId": "get_cron_status_api_cron_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Cron Status",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/{task_id}": {
+      "delete": {
+        "description": "删除定时任务\nDELETE /api/scheduled-tasks/{task_id}",
+        "operationId": "delete_task_api_cron__task_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Task",
+        "tags": [
+          "cron"
+        ]
+      },
+      "get": {
+        "description": "获取单个定时任务详情\nGET /api/scheduled-tasks/{task_id}",
+        "operationId": "get_task_api_cron__task_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task",
+        "tags": [
+          "cron"
+        ]
+      },
+      "put": {
+        "description": "更新定时任务\nPUT /api/scheduled-tasks/{task_id}",
+        "operationId": "update_task_api_cron__task_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Task",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/{task_id}/run": {
+      "post": {
+        "description": "立即执行定时任务\nPOST /api/scheduled-tasks/{task_id}/run?force=false",
+        "operationId": "run_task_api_cron__task_id__run_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Task",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/cron/{task_id}/runs": {
+      "get": {
+        "description": "获取任务的执行历史（包含输入命令）\nGET /api/scheduled-tasks/{task_id}/runs?limit=20",
+        "operationId": "get_task_runs_api_cron__task_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Task Runs",
+        "tags": [
+          "cron"
+        ]
+      }
+    },
+    "/api/engine/capabilities": {
+      "get": {
+        "description": "Declared capabilities for the active engine (default) or a named one.\n\nResponse payload is `EngineCapabilities.to_dict()` — the frontend uses\n`supported` / `limited` / `fallback` to gate UI and relay warnings.",
+        "operationId": "engine_capabilities_api_engine_capabilities_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Engine Capabilities",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/engine/list": {
+      "get": {
+        "description": "Every engine registered with DEFAULT_REGISTRY, with active flag + version.",
+        "operationId": "list_registered_engines_api_engine_list_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Registered Engines Api Engine List Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Registered Engines",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/engine/restart": {
+      "post": {
+        "description": "Restart the active engine's process. 409 if active connections block it.",
+        "operationId": "engine_restart_api_engine_restart_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngineRestartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Engine Restart",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/engine/status": {
+      "get": {
+        "description": "Active engine's runtime state: process, transition phase, connection count.",
+        "operationId": "engine_status_api_engine_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Engine Status Api Engine Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Engine Status",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/engine/switch": {
+      "post": {
+        "description": "Swap the active engine at runtime. 409 if active connections block it.",
+        "operationId": "engine_switch_api_engine_switch_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngineSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Engine Switch",
+        "tags": [
+          "engine"
+        ]
+      }
+    },
+    "/api/evaluation/report": {
+      "get": {
+        "description": "获取评测报告",
+        "operationId": "get_evaluation_report_api_evaluation_report_get",
+        "parameters": [
+          {
+            "description": "会话 ID",
+            "in": "query",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "description": "会话 ID",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Evaluation Report"
+      }
+    },
+    "/api/file/list": {
+      "post": {
+        "operationId": "list_directory_api_file_list_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListDirRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Directory",
+        "tags": [
+          "file"
+        ]
+      }
+    },
+    "/api/file/read": {
+      "post": {
+        "operationId": "read_file_api_file_read_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read File",
+        "tags": [
+          "file"
+        ]
+      }
+    },
+    "/api/file/remove": {
+      "post": {
+        "operationId": "remove_path_api_file_remove_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemovePathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Path",
+        "tags": [
+          "file"
+        ]
+      }
+    },
+    "/api/file/rmtree": {
+      "post": {
+        "operationId": "remove_tree_api_file_rmtree_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RmTreeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Tree",
+        "tags": [
+          "file"
+        ]
+      }
+    },
+    "/api/file/upload": {
+      "post": {
+        "operationId": "upload_file_api_file_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_file_api_file_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload File",
+        "tags": [
+          "file"
+        ]
+      }
+    },
+    "/api/mcp": {
+      "get": {
+        "operationId": "list_mcp_servers_api_mcp_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Mcp Servers",
+        "tags": [
+          "mcp"
+        ]
+      },
+      "post": {
+        "operationId": "create_mcp_server_api_mcp_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPServerCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/call-tool": {
+      "post": {
+        "operationId": "call_mcp_tool_api_mcp_call_tool_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPCallToolRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Call Mcp Tool",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/filter-servers": {
+      "post": {
+        "operationId": "filter_mcp_servers_api_mcp_filter_servers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPFilterServersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Filter Mcp Servers",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/{server_code}": {
+      "delete": {
+        "operationId": "delete_mcp_server_api_mcp__server_code__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      },
+      "get": {
+        "operationId": "get_mcp_server_api_mcp__server_code__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      },
+      "put": {
+        "operationId": "update_mcp_server_api_mcp__server_code__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MCPServerUpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/{server_code}/restart": {
+      "post": {
+        "operationId": "restart_mcp_server_api_mcp__server_code__restart_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MCPServerOperationRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Restart Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/{server_code}/start": {
+      "post": {
+        "operationId": "start_mcp_server_api_mcp__server_code__start_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MCPServerOperationRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/mcp/{server_code}/stop": {
+      "post": {
+        "operationId": "stop_mcp_server_api_mcp__server_code__stop_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "server_code",
+            "required": true,
+            "schema": {
+              "title": "Server Code",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/MCPServerOperationRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop Mcp Server",
+        "tags": [
+          "mcp"
+        ]
+      }
+    },
+    "/api/models": {
+      "get": {
+        "description": "List every model the active engine can route to.",
+        "operationId": "list_models_api_models_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelsListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Models",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/models/{model_id}": {
+      "get": {
+        "description": "Look up a single model by its normalised id (e.g. ``openai/gpt-5.3``).\n\nThe plugin Protocol exposes only ``list_models``; we filter the result\nhere rather than adding a separate ``get_model`` Protocol method — the\ncatalogues are small (≤ low hundreds of entries).",
+        "operationId": "get_model_api_models__model_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "model_id",
+            "required": true,
+            "schema": {
+              "title": "Model Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Model",
+        "tags": [
+          "models"
+        ]
+      }
+    },
+    "/api/nodes": {
+      "get": {
+        "operationId": "list_nodes_api_nodes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Nodes",
+        "tags": [
+          "nodes"
+        ]
+      }
+    },
+    "/api/openclaw/config": {
+      "get": {
+        "operationId": "get_openclaw_config_api_openclaw_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Openclaw Config",
+        "tags": [
+          "openclaw"
+        ]
+      }
+    },
+    "/api/openclaw/default-config": {
+      "get": {
+        "operationId": "get_default_config_api_openclaw_default_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Default Config",
+        "tags": [
+          "openclaw"
+        ]
+      }
+    },
+    "/api/openclaw/disconnect": {
+      "post": {
+        "operationId": "disconnect_api_openclaw_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Disconnect",
+        "tags": [
+          "openclaw"
+        ]
+      }
+    },
+    "/api/openclaw/test-connection": {
+      "get": {
+        "operationId": "test_connection_api_openclaw_test_connection_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Test Connection",
+        "tags": [
+          "openclaw"
+        ]
+      }
+    },
+    "/api/openclaw/zero-check": {
+      "get": {
+        "operationId": "get_zero_check_switch_api_openclaw_zero_check_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZeroCheckSwitchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Zero Check Switch",
+        "tags": [
+          "openclaw"
+        ]
+      },
+      "post": {
+        "operationId": "set_zero_check_switch_api_openclaw_zero_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ZeroCheckSwitchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZeroCheckSwitchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Zero Check Switch",
+        "tags": [
+          "openclaw"
+        ]
+      }
+    },
+    "/api/resource-materializations": {
+      "post": {
+        "description": "Accept a Backend task after BaaS proxypass authenticates the route.\n\nThe endpoint is not browser-accessible. BaaS proxypass authenticates the\ncontainer hop, and Backend authorizes the user and resource before it\nschedules this asynchronous task. A retry worker has no user IAM to carry.",
+        "operationId": "create_resource_materialization_api_resource_materializations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterializationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Resource Materialization Api Resource Materializations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Resource Materialization",
+        "tags": [
+          "resource-materializations"
+        ]
+      }
+    },
+    "/api/resource-materializations/{resource_id}/content": {
+      "get": {
+        "description": "Stream manifest-controlled content over the Backend-only route.",
+        "operationId": "stream_resource_content_api_resource_materializations__resource_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disposition",
+            "required": false,
+            "schema": {
+              "default": "inline",
+              "pattern": "^(inline|attachment)$",
+              "title": "Disposition",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Resource Content",
+        "tags": [
+          "resource-materializations"
+        ]
+      }
+    },
+    "/api/session-favorites": {
+      "get": {
+        "description": "Return favorited sessions in the same shape as ``GET /api/sessions``.",
+        "operationId": "list_session_favorites_api_session_favorites_get",
+        "parameters": [
+          {
+            "description": "Current user ID",
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Current user ID",
+              "title": "User Id"
+            }
+          },
+          {
+            "description": "Agent ID",
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Agent ID",
+              "title": "Agent Id"
+            }
+          },
+          {
+            "description": "Maximum sessions to return",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Maximum sessions to return",
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Favorite sessions offset",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Favorite sessions offset",
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Active engine type",
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Active engine type",
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Favorites",
+        "tags": [
+          "session-favorites"
+        ]
+      }
+    },
+    "/api/session-favorites/{session_id}": {
+      "delete": {
+        "description": "Remove one user's favorite marker without deleting the session.",
+        "operationId": "remove_session_favorite_api_session_favorites__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Current user ID",
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Current user ID",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Session Favorite",
+        "tags": [
+          "session-favorites"
+        ]
+      },
+      "put": {
+        "description": "Mark one session as a favorite for the current user.",
+        "operationId": "add_session_favorite_api_session_favorites__session_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Current user ID",
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Current user ID",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add Session Favorite",
+        "tags": [
+          "session-favorites"
+        ]
+      }
+    },
+    "/api/session-files": {
+      "get": {
+        "operationId": "list_session_files_api_session_files_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sessionKey",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Sessionkey",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Session Files Api Session Files Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Files",
+        "tags": [
+          "session-files"
+        ]
+      }
+    },
+    "/api/session-files/{resource_id}": {
+      "delete": {
+        "operationId": "delete_session_file_api_session_files__resource_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionKey",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Sessionkey",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Session File Api Session Files  Resource Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session File",
+        "tags": [
+          "session-files"
+        ]
+      }
+    },
+    "/api/session-files/{resource_id}/content": {
+      "get": {
+        "operationId": "stream_session_file_content_api_session_files__resource_id__content_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "resource_id",
+            "required": true,
+            "schema": {
+              "title": "Resource Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sessionKey",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Sessionkey",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "disposition",
+            "required": false,
+            "schema": {
+              "default": "inline",
+              "pattern": "^(inline|attachment)$",
+              "title": "Disposition",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stream Session File Content",
+        "tags": [
+          "session-files"
+        ]
+      }
+    },
+    "/api/sessions": {
+      "get": {
+        "operationId": "list_sessions_api_sessions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "session_key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Key"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "delete": {
+        "operationId": "delete_session_api_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Session",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "get": {
+        "operationId": "get_session_api_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/messages": {
+      "delete": {
+        "operationId": "clear_session_messages_api_sessions__session_id__messages_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clear Session Messages",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "get": {
+        "operationId": "get_session_messages_api_sessions__session_id__messages_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session Messages",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}/update": {
+      "post": {
+        "operationId": "update_session_api_sessions__session_id__update_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "title",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          },
+          {
+            "in": "query",
+            "name": "runtime",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cwd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "permission_mode",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Permission Mode"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ext_info",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ext Info"
+            }
+          },
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Session",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/skills/center/ensure": {
+      "post": {
+        "operationId": "ensure_center_skills_api_skills_center_ensure_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CenterEnsureRequestSchema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ensure Center Skills",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/activate": {
+      "post": {
+        "description": "在当前容器的持久化文件系统上提交对应引擎的 Pool 数据面。",
+        "operationId": "activate_runtime_skills_layout_api_skills_layout_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolLayoutActivateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolLayoutActivateApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Runtime Skills Layout",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/mappings/publish": {
+      "post": {
+        "description": "全量发布 Pool 受管 mapping，保留结构桥和外部入口。",
+        "operationId": "publish_runtime_skill_mappings_api_skills_layout_mappings_publish_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolMappingVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Runtime Skill Mappings",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/mappings/verify": {
+      "post": {
+        "description": "验证当前受管入口与 Pool source 一致。",
+        "operationId": "verify_runtime_skill_mappings_api_skills_layout_mappings_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolMappingVerifyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify Runtime Skill Mappings",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/probe": {
+      "post": {
+        "description": "通过 Skills Service API 核验当前运行时事实。",
+        "operationId": "probe_runtime_skills_layout_api_skills_layout_probe_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeLayoutProbeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeLayoutProbeApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Probe Runtime Skills Layout",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/quarantine/cleanup": {
+      "post": {
+        "description": "幂等清理固定 Pool 根下的一个 migration generation。",
+        "operationId": "cleanup_runtime_skills_quarantine_api_skills_layout_quarantine_cleanup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolQuarantineCleanupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cleanup Runtime Skills Quarantine",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/layout/rollback": {
+      "post": {
+        "description": "从当前权威 Pool 内容重建 Legacy，并原子切换 local bridge。",
+        "operationId": "rollback_runtime_skills_layout_api_skills_layout_rollback_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PoolLayoutRollbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolLayoutActivateApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rollback Runtime Skills Layout",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/symlink": {
+      "post": {
+        "operationId": "sync_symlinks_api_skills_symlink_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncSymlinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Symlinks",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/symlink/bindpath": {
+      "post": {
+        "operationId": "sync_bindpath_symlinks_api_skills_symlink_bindpath_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindPathRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sync Bindpath Symlinks",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/skills/symlink/clean": {
+      "post": {
+        "operationId": "clean_symlinks_api_skills_symlink_clean_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CleanSymlinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Clean Symlinks",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/api/work-items": {
+      "get": {
+        "operationId": "list_work_items_api_work_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "space_ref",
+            "required": true,
+            "schema": {
+              "title": "Space Ref",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "title": "Staff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Work Items Api Work Items Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Work Items",
+        "tags": [
+          "work-items"
+        ]
+      },
+      "post": {
+        "operationId": "create_work_item_api_work_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Work Item Api Work Items Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Work Item",
+        "tags": [
+          "work-items"
+        ]
+      }
+    },
+    "/api/work-items/detail": {
+      "get": {
+        "operationId": "get_work_item_api_work_items_detail_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "url",
+            "required": true,
+            "schema": {
+              "title": "Url",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "staff_id",
+            "required": true,
+            "schema": {
+              "title": "Staff Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Work Item Api Work Items Detail Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Work Item",
+        "tags": [
+          "work-items"
+        ]
+      }
+    },
+    "/config": {
+      "get": {
+        "description": "获取引擎配置",
+        "operationId": "engine_config_config_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Engine Config"
+      }
+    },
+    "/disconnect": {
+      "post": {
+        "description": "断开与引擎 Gateway 的连接",
+        "operationId": "disconnect_disconnect_post",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disconnect"
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health"
+      }
+    },
+    "/readiness": {
+      "get": {
+        "description": "Engine readiness — composes activation phase with subprocess liveness.\n\nDistinct from /health (a pure liveness probe). Backend's\n/api/system/readiness consumes this to derive per-bot frontend state.",
+        "operationId": "readiness_readiness_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness"
+      }
+    },
+    "/terminal": {
+      "get": {
+        "description": "Render the xterm.js debug page (or 403 / 501).",
+        "operationId": "terminal_index_terminal_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Terminal Index",
+        "tags": [
+          "webshell"
+        ]
+      }
+    },
+    "/terminal/health": {
+      "get": {
+        "description": "Health endpoint — always responds, surfaces pod identity for ops.",
+        "operationId": "terminal_health_terminal_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Terminal Health",
+        "tags": [
+          "webshell"
+        ]
+      }
+    },
+    "/test-connection": {
+      "get": {
+        "description": "测试与引擎 Gateway 的连接",
+        "operationId": "test_connection_test_connection_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "engine",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Engine"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Connection"
+      }
+    }
+  }
+}

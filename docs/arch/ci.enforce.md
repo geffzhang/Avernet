@@ -295,3 +295,23 @@ A repository may claim compliance with the constitution only if it has at least:
 - waiver mechanism
 
 Without these, compliance is aspirational rather than enforced.
+
+---
+
+## N. .NET 10 门禁
+
+当变更命中 `dotnet/`、`scripts/dotnet/` 或架构契约文档
+`docs/arch/arch.rules.md`、`docs/arch/ci.enforce.md`、
+`docs/arch/context-boundary-format.md`、`docs/arch/protocol-contract-tests.md` 时，
+必须触发 `scripts/ci/dotnet_ci.sh`。
+
+该门禁至少执行并强制失败传递以下检查：
+
+1. `dotnet restore --locked-mode`
+2. `dotnet format --verify-no-changes`
+3. `dotnet build`
+4. `dotnet test`
+5. 迁移清单可重现性校验（导出后与提交版本逐字节比较）
+6. parity-corpus 相关 Python 测试
+
+该门禁用于保证 .NET Core/Contracts/Plugin API 边界、契约测试与迁移资产在本地与 GitHub Actions 中通过同一入口持续生效。

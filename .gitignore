@@ -1,3 +1,10 @@
+# .NET build output
+bin/
+obj/
+artifacts/
+TestResults/
+*.trx
+
 # Python
 __pycache__/
 *.py[cod]

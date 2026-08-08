@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ocb.Configuration/Ocb.Configuration.csproj" />
+    <Project Path="src/Ocb.Contracts/Ocb.Contracts.csproj" />
+    <Project Path="src/Ocb.Core/Ocb.Core.csproj" />
+    <Project Path="src/Ocb.PluginApi/Ocb.PluginApi.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj" />
+    <Project Path="tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj" />
+  </Folder>
+</Solution>

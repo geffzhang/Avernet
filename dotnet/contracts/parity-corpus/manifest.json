@@ -1,0 +1,63 @@
+{
+  "version": "ocb-parity-corpus-v1",
+  "artifacts": [
+    {
+      "service": "baas",
+      "file": "baas.openapi.json",
+      "kind": "openapi",
+      "source": "src/baas/scripts/dump_openapi.py",
+      "sha256": "65a2129aad044414b0fb76172073316a32049325af6492e95ada5eeb6b7b750f"
+    },
+    {
+      "service": "backend",
+      "file": "backend.openapi.json",
+      "kind": "openapi",
+      "source": "src/backend/scripts/dump_openapi.py",
+      "sha256": "d103c48a8068fb67f94c28fa5474e769ea3ef8ea1362e931b3fcba58eab25a67"
+    },
+    {
+      "service": "bcsfuse",
+      "file": "bcsfuse.openapi.yaml",
+      "kind": "openapi",
+      "source": "src/bcsfuse/schemas/openapi.yaml",
+      "sha256": "5c5749c4fc820b64d1313eb9aa0cf76ad9a292f82560df84564aa16822545bc7"
+    },
+    {
+      "service": "engine",
+      "file": "engine.openapi.json",
+      "kind": "openapi",
+      "source": "scripts/dotnet/dump_engine_openapi.py",
+      "inputs": [
+        "scripts/dotnet/dump_engine_openapi.py",
+        "src/engine/src/engine/community/api/app.py"
+      ],
+      "sha256": "107a36ebb9de0f78f1a8306b25e308cdc3345de9b77eed9423263e3196497e5b"
+    },
+    {
+      "service": "engine",
+      "file": "engine-websocket-protocol.md",
+      "kind": "websocket",
+      "source": "src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md",
+      "sha256": "2482e0e123198afd89315fbaf4ab721aa1749f41542f1fc490181754f5df3ae3"
+    },
+    {
+      "service": "gateway",
+      "file": "gateway.openapi.json",
+      "kind": "openapi",
+      "source": "scripts/dotnet/dump_gateway_openapi.py",
+      "inputs": [
+        "scripts/dotnet/dump_gateway_openapi.py",
+        "src/gateway/configs/application.yaml",
+        "src/gateway/configs/schemas/baas.openapi.json",
+        "src/gateway/configs/schemas/bcn.openapi.json",
+        "src/gateway/configs/schemas/bcsfuse-fusion.openapi.json",
+        "src/gateway/configs/schemas/bcsfuse-workers.openapi.json",
+        "src/gateway/configs/schemas/bots.openapi.json",
+        "src/gateway/src/gateway/community/adapters/web/app.py",
+        "src/gateway/src/gateway/community/bootstrap/_forwarding.py",
+        "src/gateway/src/gateway/community/plugins/schema_catalog/file/_plugin.py"
+      ],
+      "sha256": "c49494eb103f1e42e2b41828098a56d8f641b0c3ff0e5be7c84cb13deb081d8a"
+    }
+  ]
+}

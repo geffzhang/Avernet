@@ -4,7 +4,7 @@
 
 **Goal:** 建立可构建、受架构门禁保护的 .NET 10 Solution，并用结构化清单和基线 corpus 固化五个 Python 服务的迁移边界。
 
-**Architecture:** 本阶段只建立 Contracts、Core、Plugin API、Configuration、架构测试和 CI，不实现业务 endpoint、Grain 或数据库。迁移清单通过 Python AST 与 JSON/YAML 解析现有仓库生成，成为后续五个服务计划的权威输入；Python 保持原样作为行为基线。
+**Architecture:** 本阶段只建立 Contracts、Core、Plugin API、Configuration、架构测试和 CI，不实现业务 endpoint、Grain 或数据库。迁移发现清单通过 Python AST 索引 route 声明和 Service/Plugin Protocol，parity corpus 通过 OpenAPI 与协议文档保存完整线契约；两者共同成为后续五个服务计划的权威输入。Python 保持原样作为行为基线。
 
 **Tech Stack:** .NET SDK 10.0.302、C# 14、`System.Text.Json` source generation、xUnit 2.9.3、Microsoft.NET.Test.Sdk 17.14.1、xunit.runner.visualstudio 3.1.4、coverlet.collector 6.0.4、Python 3.12 AST/JSON/YAML、GitHub Actions。
 
@@ -51,14 +51,18 @@
 
 **契约清单：**
 
-- Create `scripts/dotnet/export_contract_inventory.py`：结构化提取 route、OpenAPI、WebSocket/SSE 文档和 Plugin Protocol。
+- Create `scripts/dotnet/export_contract_inventory.py`：结构化提取 route 声明、Service/Plugin Protocol 和契约来源。
+- Create `scripts/dotnet/dump_engine_openapi.py`：确定性导出 Engine HTTP OpenAPI。
+- Create `scripts/dotnet/dump_gateway_openapi.py`：在固定 baseline 配置与 schema catalog 下确定性导出 Gateway served OpenAPI。
 - Create `scripts/dotnet/tests/test_export_contract_inventory.py`：提取器单元测试。
 - Create `dotnet/contracts/migration-inventory.json`：生成后提交的迁移清单。
 - Create `dotnet/contracts/parity-corpus/manifest.json`：基线 artifact 与校验和清单。
 - Create `dotnet/contracts/parity-corpus/backend.openapi.json`。
 - Create `dotnet/contracts/parity-corpus/baas.openapi.json`。
 - Copy `src/bcsfuse/schemas/openapi.yaml` to `dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`。
+- Create `dotnet/contracts/parity-corpus/engine.openapi.json`。
 - Copy `src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md` to `dotnet/contracts/parity-corpus/engine-websocket-protocol.md`。
+- Create `dotnet/contracts/parity-corpus/gateway.openapi.json`。
 
 **CI：**
 
@@ -256,6 +260,7 @@ Create `ContextBoundaryTests.cs`：
 
 ```csharp
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace Ocb.Architecture.Tests;
 
@@ -279,6 +284,20 @@ public sealed class ContextBoundaryTests
             Assert.Equal(JsonValueKind.Array, root.GetProperty("consumes").ValueKind);
             Assert.Equal(JsonValueKind.Array, root.GetProperty("internal_dependencies").ValueKind);
             Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("change_impact").GetString()));
+
+            var declaredDependencies = root.GetProperty("internal_dependencies")
+              .EnumerateArray()
+              .Select(element => element.GetString())
+              .Where(value => value is not null)
+              .ToHashSet(StringComparer.Ordinal);
+            var projectFile = Directory.GetFiles(project, "*.csproj", SearchOption.TopDirectoryOnly).Single();
+            var actualDependencies = XDocument.Load(projectFile)
+              .Descendants("ProjectReference")
+              .Select(element => element.Attribute("Include")!.Value.Replace('\\', '/'))
+              .Select(Path.GetFileNameWithoutExtension)
+              .ToArray();
+
+            Assert.DoesNotContain(actualDependencies, dependency => !declaredDependencies.Contains(dependency));
         }
     }
 }
@@ -535,6 +554,15 @@ public sealed class CallerContextTests
     {
         Assert.Throws<ArgumentException>(() => TenantEntityKey.Create(tenantId, entityId));
     }
+
+    [Fact]
+    public void TenantEntityKeyEncodingIsStableAndCollisionSafe()
+    {
+      Assert.Equal("dGVuYW50LTE.Ym90LTE", TenantEntityKey.Create("tenant-1", "bot-1").ToString());
+      Assert.NotEqual(
+        TenantEntityKey.Create("a:b", "c").ToString(),
+        TenantEntityKey.Create("a", "b:c").ToString());
+    }
 }
 ```
 
@@ -566,6 +594,8 @@ public sealed record CallerContext(
 Create `TenantEntityKey.cs`：
 
 ```csharp
+using System.Text;
+
 namespace Ocb.Contracts;
 
 public readonly record struct TenantEntityKey(string TenantId, string EntityId)
@@ -577,7 +607,12 @@ public readonly record struct TenantEntityKey(string TenantId, string EntityId)
         return new TenantEntityKey(tenantId, entityId);
     }
 
-    public override string ToString() => $"{TenantId}:{EntityId}";
+    public override string ToString() => $"{Encode(TenantId)}.{Encode(EntityId)}";
+
+    private static string Encode(string value) => Convert.ToBase64String(Encoding.UTF8.GetBytes(value))
+      .TrimEnd('=')
+      .Replace('+', '-')
+      .Replace('/', '_');
 }
 ```
 
@@ -754,7 +789,7 @@ git commit -m "feat(dotnet): validate deployment provider profiles"
 
 ---
 
-### Task 6: 生成结构化迁移契约清单
+### Task 6: 生成结构化迁移发现清单
 
 **Files:**
 
@@ -764,8 +799,9 @@ git commit -m "feat(dotnet): validate deployment provider profiles"
 
 **Interfaces:**
 
-- Consumes: Python AST；`src/bcsfuse/schemas/openapi.yaml`；五个服务的 `app.py`、`router.py`、Schema 与协议文档。
-- Produces: JSON object `{version, generated_from_commit, services}`；每个 service 包含 `entrypoints`、`http_routes`、`websocket_routes`、`sse_routes`、`schemas`、`plugin_protocols`、`protocol_documents`。
+- Consumes: Python AST；五个服务的 Composition Root、HTTP adapter、Service API、Plugin API 与协议文档。
+- Produces: JSON object `{version, source_tree_sha256, services}`；每个 service 包含 `entrypoints`、`route_declarations`、`service_protocols`、`plugin_protocols`、`sse_contract_sources`、`schemas`、`protocol_documents`。
+- Boundary: `route_declarations` 只记录源码中的局部 decorator 声明，不冒充组合 prefix 后的完整 endpoint；Task 7 的 OpenAPI/协议 corpus 才是 HTTP/WebSocket 线契约权威。
 
 - [ ] **Step 1: 写提取器单元测试**
 
@@ -784,7 +820,7 @@ _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
 
 
-def test_extract_fastapi_routes_uses_ast_and_captures_method_path(tmp_path: Path) -> None:
+def test_extract_route_declarations_uses_ast_and_captures_method_path(tmp_path: Path) -> None:
     source = tmp_path / "router.py"
     source.write_text(
         "from fastapi import APIRouter\n"
@@ -794,9 +830,9 @@ def test_extract_fastapi_routes_uses_ast_and_captures_method_path(tmp_path: Path
         encoding="utf-8",
     )
 
-    routes = _MODULE.extract_fastapi_routes(source)
+    routes = _MODULE.extract_route_declarations(source, tmp_path)
 
-    assert routes == [{"method": "GET", "path": "/health", "source": str(source)}]
+    assert routes == [{"method": "GET", "declared_path": "/health", "source": "router.py"}]
     ast.parse(source.read_text(encoding="utf-8"))
 
 
@@ -805,6 +841,18 @@ def test_inventory_declares_all_migrated_services(repo_root: Path = Path(__file_
     assert set(inventory["services"]) == {"backend", "engine", "baas", "gateway", "bcsfuse"}
     for service in inventory["services"].values():
         assert service["entrypoints"]
+        assert inventory["services"]["backend"]["route_declarations"]
+        assert inventory["services"]["baas"]["route_declarations"]
+        assert inventory["services"]["backend"]["service_protocols"]
+        assert inventory["services"]["backend"]["plugin_protocols"]
+        assert inventory["services"]["baas"]["service_protocols"]
+        assert inventory["services"]["baas"]["plugin_protocols"]
+        assert len(inventory["source_tree_sha256"]) == 64
+        assert all(
+                not Path(route["source"]).is_absolute()
+                for service in inventory["services"].values()
+                for route in service["route_declarations"]
+        )
 ```
 
 - [ ] **Step 2: 运行测试并确认失败**
@@ -826,8 +874,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -836,42 +884,51 @@ SERVICE_CONFIG = {
     "backend": {
         "root": "src/backend",
         "entrypoints": ["src/agentclaw/community/adapters/http/app.py"],
-        "route_globs": ["src/agentclaw/community/adapters/http/**/*router.py"],
-        "protocol_globs": ["src/agentclaw/community/plugins/**/*.py"],
+        "route_globs": ["src/agentclaw/community/adapters/http/**/*.py"],
+        "service_protocol_globs": ["src/agentclaw/community/api/**/*.py"],
+        "plugin_protocol_globs": ["src/agentclaw/community/plugin_api/**/*.py"],
         "protocol_documents": [],
     },
     "engine": {
         "root": "src/engine",
         "entrypoints": ["start.py", "src/engine/community/api/app.py"],
         "route_globs": ["src/engine/community/api/**/*.py"],
-        "protocol_globs": ["src/engine/community/**/*.py"],
+        "service_protocol_globs": ["src/engine/community/api/**/*.py"],
+        "plugin_protocol_globs": ["src/engine/community/plugin_api/**/*.py"],
         "protocol_documents": ["src/engine/community/claude_code_gateway/docs/websocket-protocol.md"],
     },
     "baas": {
         "root": "src/baas",
         "entrypoints": ["src/secbaas/community/main.py", "src/secbaas/community/adapters/web/app.py"],
-        "route_globs": ["src/secbaas/community/api/**/*.py"],
-        "protocol_globs": ["src/secbaas/community/**/*.py"],
+        "route_globs": ["src/secbaas/community/adapters/web/**/*.py"],
+        "service_protocol_globs": ["src/secbaas/community/api/**/*.py"],
+        "plugin_protocol_globs": ["src/secbaas/community/spi/**/*.py"],
         "protocol_documents": [],
     },
     "gateway": {
         "root": "src/gateway",
         "entrypoints": ["src/gateway/community/main.py", "src/gateway/community/adapters/web/app.py"],
         "route_globs": ["src/gateway/community/adapters/web/**/*.py"],
-        "protocol_globs": ["src/gateway/community/spi/**/*.py"],
+        "service_protocol_globs": ["src/gateway/community/api/**/*.py"],
+        "plugin_protocol_globs": ["src/gateway/community/spi/**/*.py"],
         "protocol_documents": [],
     },
     "bcsfuse": {
         "root": "src/bcsfuse",
         "entrypoints": ["main.py", "src/interfaces/api/app.py"],
         "route_globs": ["src/interfaces/api/**/*.py", "servers/web/**/*.py"],
-        "protocol_globs": ["src/**/*.py"],
+        "service_protocol_globs": ["src/domain/services/**/*.py"],
+        "plugin_protocol_globs": ["src/application/ports/**/*.py"],
         "protocol_documents": ["schemas/openapi.yaml", "FUSE_API_LOGIC.md"],
     },
 }
 
 
-def extract_fastapi_routes(path: Path) -> list[dict[str, str]]:
+def _relative(path: Path, repo_root: Path) -> str:
+  return path.resolve().relative_to(repo_root.resolve()).as_posix()
+
+
+def extract_route_declarations(path: Path, repo_root: Path) -> list[dict[str, str]]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     routes: list[dict[str, str]] = []
     for node in ast.walk(tree):
@@ -885,45 +942,93 @@ def extract_fastapi_routes(path: Path) -> list[dict[str, str]]:
                 continue
             if not decorator.args or not isinstance(decorator.args[0], ast.Constant) or not isinstance(decorator.args[0].value, str):
                 continue
-            routes.append({"method": method, "path": decorator.args[0].value, "source": str(path)})
-    return sorted(routes, key=lambda item: (item["path"], item["method"], item["source"]))
+            routes.append({
+                "method": method,
+                "declared_path": decorator.args[0].value,
+                "source": _relative(path, repo_root),
+            })
+    return sorted(routes, key=lambda item: (item["declared_path"], item["method"], item["source"]))
 
 
-  def extract_protocols(path: Path) -> list[dict[str, str]]:
+def extract_protocols(path: Path, repo_root: Path) -> list[dict[str, Any]]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    protocols: list[dict[str, str]] = []
+    protocols: list[dict[str, Any]] = []
     for node in tree.body:
-      if not isinstance(node, ast.ClassDef):
-        continue
-      is_protocol = any(
-        (isinstance(base, ast.Name) and base.id == "Protocol")
-        or (isinstance(base, ast.Attribute) and base.attr == "Protocol")
-        for base in node.bases
-      )
-      if is_protocol:
-        protocols.append({"name": node.name, "source": str(path)})
+        if not isinstance(node, ast.ClassDef):
+            continue
+        is_protocol = any(
+            (isinstance(base, ast.Name) and base.id == "Protocol")
+            or (isinstance(base, ast.Attribute) and base.attr == "Protocol")
+            for base in node.bases
+        )
+        if is_protocol:
+            members = []
+            for member in node.body:
+                if isinstance(member, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    prefix = "async def" if isinstance(member, ast.AsyncFunctionDef) else "def"
+                    returns = f" -> {ast.unparse(member.returns)}" if member.returns else ""
+                    members.append({
+                        "name": member.name,
+                        "signature": f"{prefix} {member.name}({ast.unparse(member.args)}){returns}",
+                    })
+            protocols.append({
+                "name": node.name,
+                "source": _relative(path, repo_root),
+                "members": members,
+            })
     return protocols
+
+
+def _glob(service_root: Path, patterns: list[str]) -> list[Path]:
+    return sorted({path for pattern in patterns for path in service_root.glob(pattern) if path.is_file()})
+
+
+def _source_tree_sha256(repo_root: Path, paths: set[Path]) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(paths, key=lambda item: _relative(item, repo_root)):
+        digest.update(_relative(path, repo_root).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def build_inventory(repo_root: Path) -> dict[str, Any]:
     services: dict[str, Any] = {}
+    inventory_sources = {Path(__file__).resolve()}
     for name, config in SERVICE_CONFIG.items():
         service_root = repo_root / config["root"]
-        route_files = sorted({path for pattern in config["route_globs"] for path in service_root.glob(pattern)})
-        protocol_files = sorted({path for pattern in config["protocol_globs"] for path in service_root.glob(pattern)})
-        routes = [route for path in route_files for route in extract_fastapi_routes(path)]
-        protocols = [protocol for path in protocol_files for protocol in extract_protocols(path)]
+        route_files = _glob(service_root, config["route_globs"])
+        service_protocol_files = _glob(service_root, config["service_protocol_globs"])
+        plugin_protocol_files = _glob(service_root, config["plugin_protocol_globs"])
+        document_files = [service_root / path for path in config["protocol_documents"]]
+        entrypoint_files = [service_root / path for path in config["entrypoints"]]
+        all_sources = set(route_files + service_protocol_files + plugin_protocol_files + document_files + entrypoint_files)
+        missing = sorted(_relative(path, repo_root) for path in all_sources if not path.is_file())
+        if missing:
+            raise FileNotFoundError(f"{name} inventory sources are missing: {missing}")
+        inventory_sources.update(all_sources)
+        routes = [route for path in route_files for route in extract_route_declarations(path, repo_root)]
+        service_protocols = [protocol for path in service_protocol_files for protocol in extract_protocols(path, repo_root)]
+        plugin_protocols = [protocol for path in plugin_protocol_files for protocol in extract_protocols(path, repo_root)]
         services[name] = {
-            "entrypoints": [str(service_root / path) for path in config["entrypoints"]],
-            "http_routes": [route for route in routes if route["method"] != "WEBSOCKET"],
-            "websocket_routes": [route for route in routes if route["method"] == "WEBSOCKET"],
-            "sse_routes": [route for route in routes if "sse" in route["source"].lower()],
-            "schemas": sorted(str(path) for path in service_root.rglob("schemas.py")),
-            "plugin_protocols": sorted(protocols, key=lambda item: (item["name"], item["source"])),
-            "protocol_documents": [str(service_root / path) for path in config["protocol_documents"]],
+            "entrypoints": [_relative(path, repo_root) for path in entrypoint_files],
+            "route_declarations": routes,
+            "service_protocols": sorted(service_protocols, key=lambda item: (item["name"], item["source"])),
+            "plugin_protocols": sorted(plugin_protocols, key=lambda item: (item["name"], item["source"])),
+            "sse_contract_sources": sorted(
+                _relative(path, repo_root)
+                for path in route_files
+                if any(marker in path.read_text(encoding="utf-8") for marker in ("EventSourceResponse", "text/event-stream"))
+            ),
+            "schemas": sorted(_relative(path, repo_root) for path in service_root.rglob("schemas.py")),
+            "protocol_documents": [_relative(path, repo_root) for path in document_files],
         }
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo_root, check=True, capture_output=True, text=True).stdout.strip()
-    return {"version": "ocb-dotnet-migration-inventory-v1", "generated_from_commit": commit, "services": services}
+    return {
+        "version": "ocb-dotnet-migration-inventory-v1",
+        "source_tree_sha256": _source_tree_sha256(repo_root, inventory_sources),
+        "services": services,
+    }
 
 
 def main() -> int:
@@ -945,17 +1050,21 @@ if __name__ == "__main__":
 
 ```python
 def test_extract_protocols_captures_protocol_class(tmp_path: Path) -> None:
-  source = tmp_path / "ports.py"
-  source.write_text(
-    "from typing import Protocol\n"
-    "class StoragePlugin(Protocol):\n"
-    "    def get(self, key: str) -> bytes: ...\n",
-    encoding="utf-8",
-  )
+    source = tmp_path / "ports.py"
+    source.write_text(
+        "from typing import Protocol\n"
+        "class StoragePlugin(Protocol):\n"
+        "    def get(self, key: str) -> bytes: ...\n",
+        encoding="utf-8",
+    )
 
-  assert _MODULE.extract_protocols(source) == [
-    {"name": "StoragePlugin", "source": str(source)}
-  ]
+    assert _MODULE.extract_protocols(source, tmp_path) == [
+        {
+            "name": "StoragePlugin",
+            "source": "ports.py",
+            "members": [{"name": "get", "signature": "def get(self, key: str) -> bytes"}],
+        }
+    ]
 ```
 
 - [ ] **Step 4: 运行单元测试并生成清单**
@@ -976,13 +1085,17 @@ Run：
 
 ```powershell
 $inventory = Get-Content dotnet/contracts/migration-inventory.json -Raw | ConvertFrom-Json
-$inventory.services.backend.http_routes.Count -gt 0
-$inventory.services.engine.http_routes.Count -gt 0
-$inventory.services.baas.http_routes.Count -gt 0
-$inventory.services.bcsfuse.http_routes.Count -gt 0
+$inventory.services.backend.route_declarations.Count -gt 0
+$inventory.services.engine.route_declarations.Count -gt 0
+$inventory.services.baas.route_declarations.Count -gt 0
+$inventory.services.bcsfuse.route_declarations.Count -gt 0
+$inventory.services.backend.service_protocols.Count -gt 0
+$inventory.services.backend.plugin_protocols.Count -gt 0
+$inventory.services.baas.service_protocols.Count -gt 0
+$inventory.services.baas.plugin_protocols.Count -gt 0
 ```
 
-Expected: 四行均输出 `True`。Gateway 是配置驱动转发面，不要求装饰器 route 非空；其 forwarding、access-key、authn SPI 路径必须出现在 `plugin_protocols` 或后续人工审核记录中。
+Expected: 八行均输出 `True`。Gateway 是配置驱动转发面，不要求 decorator 声明非空；其 forwarding、access-key、authn SPI 必须出现在 `plugin_protocols`。完整 endpoint、prefix、request/response schema 以 Task 7 parity corpus 为准。
 
 - [ ] **Step 6: Commit**
 
@@ -1000,14 +1113,18 @@ git commit -m "test(dotnet): inventory Python service contracts"
 - Create: `dotnet/contracts/parity-corpus/backend.openapi.json`
 - Create: `dotnet/contracts/parity-corpus/baas.openapi.json`
 - Create: `dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`
+- Create: `dotnet/contracts/parity-corpus/engine.openapi.json`
 - Create: `dotnet/contracts/parity-corpus/engine-websocket-protocol.md`
+- Create: `dotnet/contracts/parity-corpus/gateway.openapi.json`
 - Create: `dotnet/contracts/parity-corpus/manifest.json`
+- Create: `scripts/dotnet/dump_engine_openapi.py`
+- Create: `scripts/dotnet/dump_gateway_openapi.py`
 - Create: `scripts/dotnet/tests/test_parity_corpus.py`
 
 **Interfaces:**
 
-- Consumes: 两个现有 `dump_openapi.py`、BCSFuse OpenAPI、Engine WebSocket 文档。
-- Produces: 具有 SHA-256、source、kind、service 的 immutable baseline manifest。
+- Consumes: Backend/BaaS 现有 `dump_openapi.py`、BCSFuse OpenAPI、Engine FastAPI app 与 WebSocket 文档、Gateway 固定 baseline 配置/schema catalog/forwarding rules。
+- Produces: 覆盖五个服务、具有 SHA-256、source、kind、service 的 immutable baseline manifest。Engine 同时具有 HTTP OpenAPI 与 WebSocket artifact；Gateway artifact 是其配置驱动 served OpenAPI，而非源码 catch-all route。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -1016,19 +1133,70 @@ Create `test_parity_corpus.py`：
 ```python
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 
-_CORPUS = Path(__file__).parents[3] / "dotnet" / "contracts" / "parity-corpus"
+_REPO = Path(__file__).parents[3]
+_CORPUS = _REPO / "dotnet" / "contracts" / "parity-corpus"
 
 
 def test_manifest_hashes_match_committed_artifacts() -> None:
     manifest = json.loads((_CORPUS / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["version"] == "ocb-parity-corpus-v1"
-    assert {entry["service"] for entry in manifest["artifacts"]} == {"backend", "baas", "bcsfuse", "engine"}
+    assert {entry["service"] for entry in manifest["artifacts"]} == {
+        "backend", "engine", "baas", "gateway", "bcsfuse"
+    }
+    assert {(entry["service"], entry["kind"]) for entry in manifest["artifacts"]} >= {
+        ("engine", "openapi"),
+        ("engine", "websocket"),
+        ("gateway", "openapi"),
+    }
+    files = [entry["file"] for entry in manifest["artifacts"]]
+    assert len(files) == len(set(files))
     for entry in manifest["artifacts"]:
         payload = (_CORPUS / entry["file"]).read_bytes()
         assert hashlib.sha256(payload).hexdigest() == entry["sha256"]
+        assert (_REPO / entry["source"]).is_file()
+
+
+def test_generated_openapi_matches_committed_corpus(tmp_path: Path) -> None:
+    cases = [
+        (
+            _REPO / "src/backend",
+            ["uv", "run", "python", "scripts/dump_openapi.py"],
+            "backend.openapi.json",
+        ),
+        (
+            _REPO / "src/baas",
+            ["uv", "run", "python", "scripts/dump_openapi.py"],
+            "baas.openapi.json",
+        ),
+        (
+            _REPO,
+            ["uv", "run", "python", "scripts/dotnet/dump_engine_openapi.py"],
+            "engine.openapi.json",
+        ),
+        (
+            _REPO,
+            ["uv", "run", "python", "scripts/dotnet/dump_gateway_openapi.py"],
+            "gateway.openapi.json",
+        ),
+    ]
+    for cwd, command, artifact in cases:
+        generated = tmp_path / artifact
+        subprocess.run([*command, str(generated)], cwd=cwd, check=True)
+        assert generated.read_bytes() == (_CORPUS / artifact).read_bytes()
+
+
+def test_copied_protocol_sources_match_committed_corpus() -> None:
+    sources = {
+        _REPO / "src/bcsfuse/schemas/openapi.yaml": "bcsfuse.openapi.yaml",
+        _REPO / "src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md":
+            "engine-websocket-protocol.md",
+    }
+    for source, artifact in sources.items():
+        assert source.read_bytes() == (_CORPUS / artifact).read_bytes()
 ```
 
 - [ ] **Step 2: 运行测试并确认失败**
@@ -1054,8 +1222,12 @@ Push-Location src/baas
 uv run python scripts/dump_openapi.py ../../dotnet/contracts/parity-corpus/baas.openapi.json
 Pop-Location
 Copy-Item src/bcsfuse/schemas/openapi.yaml dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml
+uv run python scripts/dotnet/dump_engine_openapi.py dotnet/contracts/parity-corpus/engine.openapi.json
 Copy-Item src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md dotnet/contracts/parity-corpus/engine-websocket-protocol.md
+uv run python scripts/dotnet/dump_gateway_openapi.py dotnet/contracts/parity-corpus/gateway.openapi.json
 ```
+
+`dump_engine_openapi.py` 必须从 `src/engine` 环境导入 `engine.community.api.app:app`，输出排序键、UTF-8、尾随换行的 `app.openapi()`。`dump_gateway_openapi.py` 必须使用仓库内提交的 baseline Gateway 配置、schema catalog 与 forwarding rules 创建 app，再导出 `app.openapi()`；禁止访问网络、读取开发机运行态配置或退化为仅含 `/health`、`/api/test` 与 catch-all 的 FastAPI 默认 schema。两个脚本的测试必须连续导出两次并断言字节完全相同。
 
 - [ ] **Step 4: 创建 manifest**
 
@@ -1067,7 +1239,9 @@ $items = @(
   @{ service='backend'; file='backend.openapi.json'; kind='openapi'; source='src/backend/scripts/dump_openapi.py' },
   @{ service='baas'; file='baas.openapi.json'; kind='openapi'; source='src/baas/scripts/dump_openapi.py' },
   @{ service='bcsfuse'; file='bcsfuse.openapi.yaml'; kind='openapi'; source='src/bcsfuse/schemas/openapi.yaml' },
-  @{ service='engine'; file='engine-websocket-protocol.md'; kind='websocket'; source='src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md' }
+    @{ service='engine'; file='engine.openapi.json'; kind='openapi'; source='scripts/dotnet/dump_engine_openapi.py' },
+    @{ service='engine'; file='engine-websocket-protocol.md'; kind='websocket'; source='src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md' },
+    @{ service='gateway'; file='gateway.openapi.json'; kind='openapi'; source='scripts/dotnet/dump_gateway_openapi.py' }
 )
 foreach ($item in $items) { $item.sha256 = (Get-FileHash (Join-Path $root $item.file) -Algorithm SHA256).Hash.ToLowerInvariant() }
 @{ version='ocb-parity-corpus-v1'; artifacts=$items } | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $root 'manifest.json') -Encoding utf8NoBOM
@@ -1081,7 +1255,7 @@ Run：
 python -m pytest scripts/dotnet/tests/test_parity_corpus.py -v
 ```
 
-Expected: PASS，1 test passed。
+Expected: PASS；manifest 覆盖五个服务，所有生成型 artifact 从当前源码重建后与提交 corpus 逐字节一致，两个复制型 artifact 与当前源文件一致。
 
 - [ ] **Step 6: Commit**
 
@@ -1121,7 +1295,7 @@ _ROOT = Path(__file__).parents[3]
 
 def test_pre_push_routes_dotnet_changes_to_dotnet_ci() -> None:
     script = (_ROOT / "scripts/ci/pre_push.sh").read_text(encoding="utf-8")
-  assert "dotnet/" in script
+    assert "dotnet/" in script
     assert 'run_heavy "$repo_root/scripts/ci/dotnet_ci.sh"' in script
 ```
 

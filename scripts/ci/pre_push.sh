@@ -170,6 +170,12 @@ if matches_any '^src/bcs/'; then
   fi
 fi
 
+if matches_any '^(dotnet/|scripts/dotnet/|docs/arch/(arch\.rules|ci\.enforce|context-boundary-format|protocol-contract-tests)\.md)'; then
+  # .NET 变更通过统一入口执行 format/build/test + 契约清单与 parity-corpus 校验。
+  # 保持 pre-push 默认 lint-only 契约: 只有 OCB_PRE_PUSH_RUN_CI=1 时才会实际执行。
+  run_heavy "$repo_root/scripts/ci/dotnet_ci.sh"
+fi
+
 if matches_any '^src/gateway/'; then
   # Gateway CI: ruff lint + pytest + coverage + diff coverage (>=90%).
   run_heavy "$repo_root/src/gateway/scripts/ci_test.sh" --base "$base" --head "$head"

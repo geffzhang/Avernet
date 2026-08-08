@@ -121,13 +121,14 @@ SM2 不在范围内。
 计划必须覆盖：
 
 1. `POST /api/v1/groups/{group_id}/fuse` 及 worker profile/config 契约；
-2. `FusionJobGrain` 串行协调和幂等状态；
-3. `IVectorStore`、`IHybridSearchStore`、`IVectorStoreAdministration`；
-4. SonnetDB singlebox Provider；
-5. Qdrant cluster Provider；
-6. embedding/reranker 独立 Plugin API；
-7. dimension/model 不兼容 fail closed；
-8. 两个 Provider 共用的 conformance suite。
+2. Fusion API 使用 `CallerContext` 显式传递 tenant/subject,并在 `FusionJobGrain` 边界复核 tenant key；Python 过渡期的 trust-gateway 绕过不得迁移到 .NET；
+3. `FusionJobGrain` 串行协调和幂等状态；
+4. `IVectorStore`、`IHybridSearchStore`、`IVectorStoreAdministration`；
+5. SonnetDB singlebox Provider；
+6. Qdrant cluster Provider；
+7. embedding/reranker 独立 Plugin API；
+8. dimension/model 不兼容 fail closed；
+9. 两个 Provider 共用的 conformance suite。
 
 ## 阶段 5：Backend 领域与 Skills
 

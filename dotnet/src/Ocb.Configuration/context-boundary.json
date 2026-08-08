@@ -1,0 +1,7 @@
+{
+  "purpose": "定义部署 Profile、Provider 选择与启动前配置校验。",
+  "provides": ["DeploymentProfile", "OcbPlatformOptions", "OcbPlatformOptionsValidator"],
+  "consumes": [],
+  "internal_dependencies": [],
+  "change_impact": "配置组合变化会影响 singlebox、cluster、测试 Profile 和所有 Composition Root。"
+}

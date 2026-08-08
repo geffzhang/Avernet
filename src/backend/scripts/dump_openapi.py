@@ -104,6 +104,7 @@ def dump_openapi(target: str | Path) -> dict[str, Any]:
     Path(target).write_text(
         json.dumps(spec, indent=2, sort_keys=True, ensure_ascii=False),
         encoding="utf-8",
+        newline="\n",
     )
     return spec
 

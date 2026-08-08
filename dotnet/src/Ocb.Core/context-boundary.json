@@ -1,0 +1,7 @@
+{
+  "purpose": "承载传输无关、基础设施无关的领域规则与应用协调。",
+  "provides": [],
+  "consumes": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "领域规则变化会影响 Service API 消费者、Plugin 调用和后续 Grain 协调。"
+}

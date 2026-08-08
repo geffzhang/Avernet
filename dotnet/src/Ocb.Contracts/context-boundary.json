@@ -1,0 +1,7 @@
+{
+  "purpose": "定义消费者调用 OCB 核心时使用的 Service API 与共享线协议模型。",
+  "provides": ["CallerContext", "TenantEntityKey", "DomainError"],
+  "consumes": [],
+  "internal_dependencies": [],
+  "change_impact": "字段或序列化名称变化会影响 Gateway、Grain、Runtime Worker 和外部契约。"
+}
