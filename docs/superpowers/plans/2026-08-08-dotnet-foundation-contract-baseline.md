@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 全部项目目标框架为 `net10.0`，`LangVersion=14`，启用 nullable、implicit usings 和 warnings-as-errors。
-- 只使用公共稳定 package；版本集中在 `src/dotnet/Directory.Packages.props`。
+- 只使用公共稳定 package；版本集中在 `dotnet/Directory.Packages.props`。
 - 本阶段不得添加 Orleans、TickerQ、EF Core、MinIO、SonnetDB、Qdrant 或 ASP.NET Core 业务实现依赖。
 - 禁止任何 `OpenClaw.*` ProjectReference、源码链接或 NuGet 依赖。
 - Service API 位于 `Ocb.Contracts`，Plugin API 位于 `Ocb.PluginApi`，两者不能合并。
@@ -29,42 +29,42 @@
 
 **Solution 与生产项目：**
 
-- Create `src/dotnet/Ocb.slnx`：.NET Solution 清单。
-- Create `src/dotnet/global.json`：固定 SDK `10.0.302`，允许 feature-band roll-forward。
-- Create `src/dotnet/Directory.Build.props`：统一 `net10.0`、C# 14、nullable、warnings-as-errors。
-- Create `src/dotnet/Directory.Packages.props`：集中锁定测试包版本。
-- Create `src/dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj`：Service API 与共享 wire model。
-- Create `src/dotnet/src/Ocb.Core/Ocb.Core.csproj`：传输无关的领域基础类型。
-- Create `src/dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj`：基础设施 Plugin API。
-- Create `src/dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj`：Profile 与 Provider 组合校验。
-- Create `src/dotnet/src/*/context-boundary.json`：每个生产项目的边界声明。
+- Create `dotnet/Ocb.slnx`：.NET Solution 清单。
+- Create `dotnet/global.json`：固定 SDK `10.0.302`，允许 feature-band roll-forward。
+- Create `dotnet/Directory.Build.props`：统一 `net10.0`、C# 14、nullable、warnings-as-errors。
+- Create `dotnet/Directory.Packages.props`：集中锁定测试包版本。
+- Create `dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj`：Service API 与共享 wire model。
+- Create `dotnet/src/Ocb.Core/Ocb.Core.csproj`：传输无关的领域基础类型。
+- Create `dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj`：基础设施 Plugin API。
+- Create `dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj`：Profile 与 Provider 组合校验。
+- Create `dotnet/src/*/context-boundary.json`：每个生产项目的边界声明。
 
 **测试项目：**
 
-- Create `src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj`：项目引用、包引用、环境访问、边界元数据门禁。
-- Create `src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj`：Service/Plugin contract 和序列化测试。
-- Create `src/dotnet/tests/Ocb.Architecture.Tests/RepositoryPaths.cs`：稳定解析仓库根目录。
-- Create `src/dotnet/tests/Ocb.Architecture.Tests/ContextBoundaryTests.cs`。
-- Create `src/dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs`。
-- Create `src/dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs`。
-- Create `src/dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs`。
+- Create `dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj`：项目引用、包引用、环境访问、边界元数据门禁。
+- Create `dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj`：Service/Plugin contract 和序列化测试。
+- Create `dotnet/tests/Ocb.Architecture.Tests/RepositoryPaths.cs`：稳定解析仓库根目录。
+- Create `dotnet/tests/Ocb.Architecture.Tests/ContextBoundaryTests.cs`。
+- Create `dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs`。
+- Create `dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs`。
+- Create `dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs`。
 
 **契约清单：**
 
 - Create `scripts/dotnet/export_contract_inventory.py`：结构化提取 route、OpenAPI、WebSocket/SSE 文档和 Plugin Protocol。
 - Create `scripts/dotnet/tests/test_export_contract_inventory.py`：提取器单元测试。
-- Create `src/dotnet/contracts/migration-inventory.json`：生成后提交的迁移清单。
-- Create `src/dotnet/contracts/parity-corpus/manifest.json`：基线 artifact 与校验和清单。
-- Create `src/dotnet/contracts/parity-corpus/backend.openapi.json`。
-- Create `src/dotnet/contracts/parity-corpus/baas.openapi.json`。
-- Copy `src/bcsfuse/schemas/openapi.yaml` to `src/dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`。
-- Copy `src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md` to `src/dotnet/contracts/parity-corpus/engine-websocket-protocol.md`。
+- Create `dotnet/contracts/migration-inventory.json`：生成后提交的迁移清单。
+- Create `dotnet/contracts/parity-corpus/manifest.json`：基线 artifact 与校验和清单。
+- Create `dotnet/contracts/parity-corpus/backend.openapi.json`。
+- Create `dotnet/contracts/parity-corpus/baas.openapi.json`。
+- Copy `src/bcsfuse/schemas/openapi.yaml` to `dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`。
+- Copy `src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md` to `dotnet/contracts/parity-corpus/engine-websocket-protocol.md`。
 
 **CI：**
 
 - Create `scripts/ci/dotnet_ci.sh`：restore、format、build、test 的统一入口。
-- Create `scripts/ci/tests/test_pre_push_dotnet_gate.py`：验证 `src/dotnet/` 变更触发 .NET gate。
-- Modify `scripts/ci/pre_push.sh`：增加 `src/dotnet/` 分发。
+- Create `scripts/ci/tests/test_pre_push_dotnet_gate.py`：验证 `dotnet/` 变更触发 .NET gate。
+- Modify `scripts/ci/pre_push.sh`：增加 `dotnet/` 分发。
 - Modify `.github/workflows/unit-tests.yml`：增加 .NET job。
 - Create `scripts/ci/tests/test_unit_test_workflow_dotnet.py`：验证 workflow 路径检测和命令。
 - Modify `docs/arch/ci.enforce.md`：记录 .NET 架构、契约和测试门禁。
@@ -75,35 +75,35 @@
 
 **Files:**
 
-- Create: `src/dotnet/global.json`
-- Create: `src/dotnet/Directory.Build.props`
-- Create: `src/dotnet/Directory.Packages.props`
-- Create: `src/dotnet/Ocb.slnx`
-- Create: `src/dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj`
-- Create: `src/dotnet/src/Ocb.Core/Ocb.Core.csproj`
-- Create: `src/dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj`
-- Create: `src/dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj`
-- Create: `src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj`
-- Create: `src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj`
+- Create: `dotnet/global.json`
+- Create: `dotnet/Directory.Build.props`
+- Create: `dotnet/Directory.Packages.props`
+- Create: `dotnet/Ocb.slnx`
+- Create: `dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj`
+- Create: `dotnet/src/Ocb.Core/Ocb.Core.csproj`
+- Create: `dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj`
+- Create: `dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj`
+- Create: `dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj`
+- Create: `dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj`
 
 **Interfaces:**
 
 - Consumes: .NET SDK `10.0.302`。
-- Produces: `src/dotnet/Ocb.slnx`；后续任务通过 `dotnet test Ocb.slnx` 验证。
+- Produces: `dotnet/Ocb.slnx`；后续任务通过 `dotnet test Ocb.slnx` 验证。
 
 - [ ] **Step 1: 运行缺失 Solution 的失败检查**
 
 Run:
 
 ```powershell
-Test-Path src/dotnet/Ocb.slnx
+Test-Path dotnet/Ocb.slnx
 ```
 
 Expected: 输出 `False`。
 
 - [ ] **Step 2: 创建目录和 SDK 锁定文件**
 
-Create `src/dotnet/global.json`：
+Create `dotnet/global.json`：
 
 ```json
 {
@@ -115,7 +115,7 @@ Create `src/dotnet/global.json`：
 }
 ```
 
-Create `src/dotnet/Directory.Build.props`：
+Create `dotnet/Directory.Build.props`：
 
 ```xml
 <Project>
@@ -133,7 +133,7 @@ Create `src/dotnet/Directory.Build.props`：
 </Project>
 ```
 
-Create `src/dotnet/Directory.Packages.props`：
+Create `dotnet/Directory.Packages.props`：
 
 ```xml
 <Project>
@@ -154,15 +154,15 @@ Create `src/dotnet/Directory.Packages.props`：
 Run from repository root：
 
 ```powershell
-New-Item -ItemType Directory -Force src/dotnet/src, src/dotnet/tests | Out-Null
-dotnet new sln --name Ocb --format slnx --output src/dotnet
-dotnet new classlib --name Ocb.Contracts --output src/dotnet/src/Ocb.Contracts --framework net10.0 --no-restore
-dotnet new classlib --name Ocb.Core --output src/dotnet/src/Ocb.Core --framework net10.0 --no-restore
-dotnet new classlib --name Ocb.PluginApi --output src/dotnet/src/Ocb.PluginApi --framework net10.0 --no-restore
-dotnet new classlib --name Ocb.Configuration --output src/dotnet/src/Ocb.Configuration --framework net10.0 --no-restore
-dotnet new xunit --name Ocb.Architecture.Tests --output src/dotnet/tests/Ocb.Architecture.Tests --framework net10.0 --no-restore
-dotnet new xunit --name Ocb.Contracts.Tests --output src/dotnet/tests/Ocb.Contracts.Tests --framework net10.0 --no-restore
-dotnet sln src/dotnet/Ocb.slnx add src/dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj src/dotnet/src/Ocb.Core/Ocb.Core.csproj src/dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj src/dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj
+New-Item -ItemType Directory -Force dotnet/src, dotnet/tests | Out-Null
+dotnet new sln --name Ocb --format slnx --output dotnet
+dotnet new classlib --name Ocb.Contracts --output dotnet/src/Ocb.Contracts --framework net10.0 --no-restore
+dotnet new classlib --name Ocb.Core --output dotnet/src/Ocb.Core --framework net10.0 --no-restore
+dotnet new classlib --name Ocb.PluginApi --output dotnet/src/Ocb.PluginApi --framework net10.0 --no-restore
+dotnet new classlib --name Ocb.Configuration --output dotnet/src/Ocb.Configuration --framework net10.0 --no-restore
+dotnet new xunit --name Ocb.Architecture.Tests --output dotnet/tests/Ocb.Architecture.Tests --framework net10.0 --no-restore
+dotnet new xunit --name Ocb.Contracts.Tests --output dotnet/tests/Ocb.Contracts.Tests --framework net10.0 --no-restore
+dotnet sln dotnet/Ocb.slnx add dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj dotnet/src/Ocb.Core/Ocb.Core.csproj dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj
 ```
 
 Expected: 每条命令成功，Solution 包含 6 个项目。
@@ -172,9 +172,9 @@ Expected: 每条命令成功，Solution 包含 6 个项目。
 Run：
 
 ```powershell
-dotnet add src/dotnet/src/Ocb.Core/Ocb.Core.csproj reference src/dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj src/dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj
-dotnet add src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj reference src/dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj src/dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj src/dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj
-Remove-Item src/dotnet/src/Ocb.Contracts/Class1.cs, src/dotnet/src/Ocb.Core/Class1.cs, src/dotnet/src/Ocb.PluginApi/Class1.cs, src/dotnet/src/Ocb.Configuration/Class1.cs, src/dotnet/tests/Ocb.Architecture.Tests/UnitTest1.cs, src/dotnet/tests/Ocb.Contracts.Tests/UnitTest1.cs
+dotnet add dotnet/src/Ocb.Core/Ocb.Core.csproj reference dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj
+dotnet add dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj reference dotnet/src/Ocb.Contracts/Ocb.Contracts.csproj dotnet/src/Ocb.PluginApi/Ocb.PluginApi.csproj dotnet/src/Ocb.Configuration/Ocb.Configuration.csproj
+Remove-Item dotnet/src/Ocb.Contracts/Class1.cs, dotnet/src/Ocb.Core/Class1.cs, dotnet/src/Ocb.PluginApi/Class1.cs, dotnet/src/Ocb.Configuration/Class1.cs, dotnet/tests/Ocb.Architecture.Tests/UnitTest1.cs, dotnet/tests/Ocb.Contracts.Tests/UnitTest1.cs
 ```
 
 Edit both test `.csproj` files so package references omit `Version` and keep template metadata：
@@ -199,16 +199,16 @@ Edit both test `.csproj` files so package references omit `Version` and keep tem
 Run：
 
 ```powershell
-dotnet restore src/dotnet/Ocb.slnx --use-lock-file
-dotnet build src/dotnet/Ocb.slnx --no-restore --configuration Release
+dotnet restore dotnet/Ocb.slnx --use-lock-file
+dotnet build dotnet/Ocb.slnx --no-restore --configuration Release
 ```
 
-Expected: `Build succeeded.`，0 warnings，0 errors，并生成 `src/dotnet/packages.lock.json` 或各项目 lock file；将生成的 lock file 一并提交。
+Expected: `Build succeeded.`，0 warnings，0 errors，并生成 `dotnet/packages.lock.json` 或各项目 lock file；将生成的 lock file 一并提交。
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/dotnet
+git add dotnet
 git commit -m "build(dotnet): add .NET 10 solution foundation"
 ```
 
@@ -218,17 +218,17 @@ git commit -m "build(dotnet): add .NET 10 solution foundation"
 
 **Files:**
 
-- Create: `src/dotnet/src/Ocb.Contracts/context-boundary.json`
-- Create: `src/dotnet/src/Ocb.Core/context-boundary.json`
-- Create: `src/dotnet/src/Ocb.PluginApi/context-boundary.json`
-- Create: `src/dotnet/src/Ocb.Configuration/context-boundary.json`
-- Create: `src/dotnet/tests/Ocb.Architecture.Tests/RepositoryPaths.cs`
-- Create: `src/dotnet/tests/Ocb.Architecture.Tests/ContextBoundaryTests.cs`
+- Create: `dotnet/src/Ocb.Contracts/context-boundary.json`
+- Create: `dotnet/src/Ocb.Core/context-boundary.json`
+- Create: `dotnet/src/Ocb.PluginApi/context-boundary.json`
+- Create: `dotnet/src/Ocb.Configuration/context-boundary.json`
+- Create: `dotnet/tests/Ocb.Architecture.Tests/RepositoryPaths.cs`
+- Create: `dotnet/tests/Ocb.Architecture.Tests/ContextBoundaryTests.cs`
 
 **Interfaces:**
 
 - Consumes: `context-boundary.json` schema：`purpose: string`、`provides/consumes/internalDependencies: string[]`、`changeImpact: string`。
-- Produces: 所有 `src/dotnet/src/Ocb.*` 项目的边界完整性测试。
+- Produces: 所有 `dotnet/src/Ocb.*` 项目的边界完整性测试。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -264,7 +264,7 @@ public sealed class ContextBoundaryTests
     [Fact]
     public void EveryProductionProjectDeclaresAValidContextBoundary()
     {
-        var sourceRoot = Path.Combine(RepositoryPaths.Root().FullName, "src", "dotnet", "src");
+        var sourceRoot = Path.Combine(RepositoryPaths.Root().FullName, "dotnet", "src");
         var projects = Directory.GetDirectories(sourceRoot, "Ocb.*", SearchOption.TopDirectoryOnly);
 
         Assert.NotEmpty(projects);
@@ -289,7 +289,7 @@ public sealed class ContextBoundaryTests
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~ContextBoundaryTests
+dotnet test dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~ContextBoundaryTests
 ```
 
 Expected: FAIL，消息包含 `Missing ...context-boundary.json`。
@@ -349,7 +349,7 @@ Create `Ocb.Configuration/context-boundary.json`：
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~ContextBoundaryTests
+dotnet test dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~ContextBoundaryTests
 ```
 
 Expected: PASS，1 test passed。
@@ -357,7 +357,7 @@ Expected: PASS，1 test passed。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/dotnet/src/*/context-boundary.json src/dotnet/tests/Ocb.Architecture.Tests
+git add dotnet/src/*/context-boundary.json dotnet/tests/Ocb.Architecture.Tests
 git commit -m "test(dotnet): enforce context boundary metadata"
 ```
 
@@ -367,7 +367,7 @@ git commit -m "test(dotnet): enforce context boundary metadata"
 
 **Files:**
 
-- Create: `src/dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs`
+- Create: `dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs`
 
 **Interfaces:**
 
@@ -433,7 +433,7 @@ public sealed class DependencyBoundaryTests
     [Fact]
     public void RawEnvironmentAccessIsConfinedToConfigurationProject()
     {
-        var sourceRoot = Path.Combine(RepositoryPaths.Root().FullName, "src", "dotnet", "src");
+        var sourceRoot = Path.Combine(RepositoryPaths.Root().FullName, "dotnet", "src");
         var offenders = Directory.GetFiles(sourceRoot, "*.cs", SearchOption.AllDirectories)
             .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}Ocb.Configuration{Path.DirectorySeparatorChar}"))
             .Where(path => File.ReadAllText(path).Contains("Environment.GetEnvironmentVariable", StringComparison.Ordinal))
@@ -444,7 +444,7 @@ public sealed class DependencyBoundaryTests
 
     private static XDocument LoadProject(string projectName)
     {
-        var path = Path.Combine(RepositoryPaths.Root().FullName, "src", "dotnet", "src", projectName, $"{projectName}.csproj");
+        var path = Path.Combine(RepositoryPaths.Root().FullName, "dotnet", "src", projectName, $"{projectName}.csproj");
         return XDocument.Load(path);
     }
 }
@@ -452,7 +452,7 @@ public sealed class DependencyBoundaryTests
 
 - [ ] **Step 2: 添加临时违规并确认测试失败**
 
-Temporarily add this line to a new `src/dotnet/src/Ocb.Core/BoundaryProbe.cs`：
+Temporarily add this line to a new `dotnet/src/Ocb.Core/BoundaryProbe.cs`：
 
 ```csharp
 _ = Environment.GetEnvironmentVariable("OCB_BOUNDARY_PROBE");
@@ -461,7 +461,7 @@ _ = Environment.GetEnvironmentVariable("OCB_BOUNDARY_PROBE");
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~DependencyBoundaryTests
+dotnet test dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~DependencyBoundaryTests
 ```
 
 Expected: FAIL at `RawEnvironmentAccessIsConfinedToConfigurationProject`，offender 包含 `BoundaryProbe.cs`。
@@ -471,8 +471,8 @@ Expected: FAIL at `RawEnvironmentAccessIsConfinedToConfigurationProject`，offen
 Run：
 
 ```powershell
-Remove-Item src/dotnet/src/Ocb.Core/BoundaryProbe.cs
-dotnet test src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~DependencyBoundaryTests
+Remove-Item dotnet/src/Ocb.Core/BoundaryProbe.cs
+dotnet test dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj --filter FullyQualifiedName~DependencyBoundaryTests
 ```
 
 Expected: PASS，4 theories/facts 全部通过。
@@ -480,7 +480,7 @@ Expected: PASS，4 theories/facts 全部通过。
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs
+git add dotnet/tests/Ocb.Architecture.Tests/DependencyBoundaryTests.cs
 git commit -m "test(dotnet): enforce dependency boundaries"
 ```
 
@@ -490,12 +490,12 @@ git commit -m "test(dotnet): enforce dependency boundaries"
 
 **Files:**
 
-- Create: `src/dotnet/src/Ocb.Contracts/CallerContext.cs`
-- Create: `src/dotnet/src/Ocb.Contracts/TenantEntityKey.cs`
-- Create: `src/dotnet/src/Ocb.Contracts/DomainError.cs`
-- Create: `src/dotnet/src/Ocb.Contracts/OcbJsonContext.cs`
-- Create: `src/dotnet/src/Ocb.PluginApi/IPluginContract.cs`
-- Create: `src/dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs`
+- Create: `dotnet/src/Ocb.Contracts/CallerContext.cs`
+- Create: `dotnet/src/Ocb.Contracts/TenantEntityKey.cs`
+- Create: `dotnet/src/Ocb.Contracts/DomainError.cs`
+- Create: `dotnet/src/Ocb.Contracts/OcbJsonContext.cs`
+- Create: `dotnet/src/Ocb.PluginApi/IPluginContract.cs`
+- Create: `dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs`
 
 **Interfaces:**
 
@@ -543,7 +543,7 @@ public sealed class CallerContextTests
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~CallerContextTests
+dotnet test dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~CallerContextTests
 ```
 
 Expected: FAIL to compile，`CallerContext`、`OcbJsonContext` 和 `TenantEntityKey` 不存在。
@@ -615,8 +615,8 @@ public interface IPluginContract;
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~CallerContextTests
-dotnet test src/dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj
+dotnet test dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~CallerContextTests
+dotnet test dotnet/tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj
 ```
 
 Expected: 两条命令均 PASS。
@@ -624,7 +624,7 @@ Expected: 两条命令均 PASS。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/dotnet/src/Ocb.Contracts src/dotnet/src/Ocb.PluginApi src/dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs
+git add dotnet/src/Ocb.Contracts dotnet/src/Ocb.PluginApi dotnet/tests/Ocb.Contracts.Tests/CallerContextTests.cs
 git commit -m "feat(dotnet): add shared service contract primitives"
 ```
 
@@ -634,10 +634,10 @@ git commit -m "feat(dotnet): add shared service contract primitives"
 
 **Files:**
 
-- Create: `src/dotnet/src/Ocb.Configuration/DeploymentProfile.cs`
-- Create: `src/dotnet/src/Ocb.Configuration/OcbPlatformOptions.cs`
-- Create: `src/dotnet/src/Ocb.Configuration/OcbPlatformOptionsValidator.cs`
-- Create: `src/dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs`
+- Create: `dotnet/src/Ocb.Configuration/DeploymentProfile.cs`
+- Create: `dotnet/src/Ocb.Configuration/OcbPlatformOptions.cs`
+- Create: `dotnet/src/Ocb.Configuration/OcbPlatformOptionsValidator.cs`
+- Create: `dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs`
 
 **Interfaces:**
 
@@ -682,7 +682,7 @@ public sealed class DeploymentProfileTests
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~DeploymentProfileTests
+dotnet test dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~DeploymentProfileTests
 ```
 
 Expected: FAIL to compile，配置类型不存在。
@@ -740,7 +740,7 @@ public static class OcbPlatformOptionsValidator
 Run：
 
 ```powershell
-dotnet test src/dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~DeploymentProfileTests
+dotnet test dotnet/tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj --filter FullyQualifiedName~DeploymentProfileTests
 ```
 
 Expected: PASS，6 cases passed。
@@ -748,7 +748,7 @@ Expected: PASS，6 cases passed。
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/dotnet/src/Ocb.Configuration src/dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs
+git add dotnet/src/Ocb.Configuration dotnet/tests/Ocb.Contracts.Tests/DeploymentProfileTests.cs
 git commit -m "feat(dotnet): validate deployment provider profiles"
 ```
 
@@ -760,7 +760,7 @@ git commit -m "feat(dotnet): validate deployment provider profiles"
 
 - Create: `scripts/dotnet/export_contract_inventory.py`
 - Create: `scripts/dotnet/tests/test_export_contract_inventory.py`
-- Create: `src/dotnet/contracts/migration-inventory.json`
+- Create: `dotnet/contracts/migration-inventory.json`
 
 **Interfaces:**
 
@@ -964,8 +964,8 @@ Run：
 
 ```powershell
 python -m pytest scripts/dotnet/tests/test_export_contract_inventory.py -v
-python scripts/dotnet/export_contract_inventory.py --output src/dotnet/contracts/migration-inventory.json
-python -m json.tool src/dotnet/contracts/migration-inventory.json > $null
+python scripts/dotnet/export_contract_inventory.py --output dotnet/contracts/migration-inventory.json
+python -m json.tool dotnet/contracts/migration-inventory.json > $null
 ```
 
 Expected: pytest PASS；JSON 校验退出码 0；`services` 精确包含五个目标服务。
@@ -975,7 +975,7 @@ Expected: pytest PASS；JSON 校验退出码 0；`services` 精确包含五个�
 Run：
 
 ```powershell
-$inventory = Get-Content src/dotnet/contracts/migration-inventory.json -Raw | ConvertFrom-Json
+$inventory = Get-Content dotnet/contracts/migration-inventory.json -Raw | ConvertFrom-Json
 $inventory.services.backend.http_routes.Count -gt 0
 $inventory.services.engine.http_routes.Count -gt 0
 $inventory.services.baas.http_routes.Count -gt 0
@@ -987,7 +987,7 @@ Expected: 四行均输出 `True`。Gateway 是配置驱动转发面，不要求�
 - [ ] **Step 6: Commit**
 
 ```bash
-git add scripts/dotnet src/dotnet/contracts/migration-inventory.json
+git add scripts/dotnet dotnet/contracts/migration-inventory.json
 git commit -m "test(dotnet): inventory Python service contracts"
 ```
 
@@ -997,11 +997,11 @@ git commit -m "test(dotnet): inventory Python service contracts"
 
 **Files:**
 
-- Create: `src/dotnet/contracts/parity-corpus/backend.openapi.json`
-- Create: `src/dotnet/contracts/parity-corpus/baas.openapi.json`
-- Create: `src/dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`
-- Create: `src/dotnet/contracts/parity-corpus/engine-websocket-protocol.md`
-- Create: `src/dotnet/contracts/parity-corpus/manifest.json`
+- Create: `dotnet/contracts/parity-corpus/backend.openapi.json`
+- Create: `dotnet/contracts/parity-corpus/baas.openapi.json`
+- Create: `dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml`
+- Create: `dotnet/contracts/parity-corpus/engine-websocket-protocol.md`
+- Create: `dotnet/contracts/parity-corpus/manifest.json`
 - Create: `scripts/dotnet/tests/test_parity_corpus.py`
 
 **Interfaces:**
@@ -1019,7 +1019,7 @@ import json
 from pathlib import Path
 
 
-_CORPUS = Path(__file__).parents[3] / "src" / "dotnet" / "contracts" / "parity-corpus"
+_CORPUS = Path(__file__).parents[3] / "dotnet" / "contracts" / "parity-corpus"
 
 
 def test_manifest_hashes_match_committed_artifacts() -> None:
@@ -1046,15 +1046,15 @@ Expected: FAIL，`manifest.json` 不存在。
 Run：
 
 ```powershell
-New-Item -ItemType Directory -Force src/dotnet/contracts/parity-corpus | Out-Null
+New-Item -ItemType Directory -Force dotnet/contracts/parity-corpus | Out-Null
 Push-Location src/backend
-uv run python scripts/dump_openapi.py ../dotnet/contracts/parity-corpus/backend.openapi.json
+uv run python scripts/dump_openapi.py ../../dotnet/contracts/parity-corpus/backend.openapi.json
 Pop-Location
 Push-Location src/baas
-uv run python scripts/dump_openapi.py ../dotnet/contracts/parity-corpus/baas.openapi.json
+uv run python scripts/dump_openapi.py ../../dotnet/contracts/parity-corpus/baas.openapi.json
 Pop-Location
-Copy-Item src/bcsfuse/schemas/openapi.yaml src/dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml
-Copy-Item src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md src/dotnet/contracts/parity-corpus/engine-websocket-protocol.md
+Copy-Item src/bcsfuse/schemas/openapi.yaml dotnet/contracts/parity-corpus/bcsfuse.openapi.yaml
+Copy-Item src/engine/src/engine/community/claude_code_gateway/docs/websocket-protocol.md dotnet/contracts/parity-corpus/engine-websocket-protocol.md
 ```
 
 - [ ] **Step 4: 创建 manifest**
@@ -1062,7 +1062,7 @@ Copy-Item src/engine/src/engine/community/claude_code_gateway/docs/websocket-pro
 Run：
 
 ```powershell
-$root = Resolve-Path src/dotnet/contracts/parity-corpus
+$root = Resolve-Path dotnet/contracts/parity-corpus
 $items = @(
   @{ service='backend'; file='backend.openapi.json'; kind='openapi'; source='src/backend/scripts/dump_openapi.py' },
   @{ service='baas'; file='baas.openapi.json'; kind='openapi'; source='src/baas/scripts/dump_openapi.py' },
@@ -1086,7 +1086,7 @@ Expected: PASS，1 test passed。
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/dotnet/contracts/parity-corpus scripts/dotnet/tests/test_parity_corpus.py
+git add dotnet/contracts/parity-corpus scripts/dotnet/tests/test_parity_corpus.py
 git commit -m "test(dotnet): capture protocol parity baseline"
 ```
 
@@ -1105,7 +1105,7 @@ git commit -m "test(dotnet): capture protocol parity baseline"
 
 **Interfaces:**
 
-- Produces: `scripts/ci/dotnet_ci.sh [--configuration Release]`；`src/dotnet/` 变更在 pre-push 和 GitHub Actions 中触发。
+- Produces: `scripts/ci/dotnet_ci.sh [--configuration Release]`；`dotnet/` 变更在 pre-push 和 GitHub Actions 中触发。
 - Consumes: `dotnet format`、`dotnet build`、`dotnet test`。
 
 - [ ] **Step 1: 写 pre-push 失败测试**
@@ -1121,7 +1121,7 @@ _ROOT = Path(__file__).parents[3]
 
 def test_pre_push_routes_dotnet_changes_to_dotnet_ci() -> None:
     script = (_ROOT / "scripts/ci/pre_push.sh").read_text(encoding="utf-8")
-  assert "src/dotnet/" in script
+  assert "dotnet/" in script
     assert 'run_heavy "$repo_root/scripts/ci/dotnet_ci.sh"' in script
 ```
 
@@ -1142,7 +1142,7 @@ def test_unit_test_workflow_has_dotnet_job() -> None:
     assert "actions/setup-dotnet@v4" in rendered
     assert "10.0.302" in rendered
     assert "scripts/ci/dotnet_ci.sh" in rendered
-    assert "src/dotnet" in rendered
+    assert "dotnet" in rendered
 ```
 
 - [ ] **Step 2: 运行测试并确认失败**
@@ -1164,7 +1164,7 @@ Create `scripts/ci/dotnet_ci.sh`：
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
-solution="$repo_root/src/dotnet/Ocb.slnx"
+solution="$repo_root/dotnet/Ocb.slnx"
 configuration="Release"
 
 if [[ "${1:-}" == "--configuration" ]]; then
@@ -1175,9 +1175,9 @@ dotnet restore "$solution" --locked-mode
 dotnet format "$solution" --verify-no-changes --no-restore
 dotnet build "$solution" --configuration "$configuration" --no-restore
 dotnet test "$solution" --configuration "$configuration" --no-build --collect:"XPlat Code Coverage"
-python3 "$repo_root/scripts/dotnet/export_contract_inventory.py" --output "$repo_root/src/dotnet/contracts/migration-inventory.generated.json"
-diff -u "$repo_root/src/dotnet/contracts/migration-inventory.json" "$repo_root/src/dotnet/contracts/migration-inventory.generated.json"
-rm "$repo_root/src/dotnet/contracts/migration-inventory.generated.json"
+python3 "$repo_root/scripts/dotnet/export_contract_inventory.py" --output "$repo_root/dotnet/contracts/migration-inventory.generated.json"
+diff -u "$repo_root/dotnet/contracts/migration-inventory.json" "$repo_root/dotnet/contracts/migration-inventory.generated.json"
+rm "$repo_root/dotnet/contracts/migration-inventory.generated.json"
 python3 -m pytest "$repo_root/scripts/dotnet/tests" -v
 ```
 
@@ -1192,7 +1192,7 @@ chmod +x scripts/ci/dotnet_ci.sh
 在 `scripts/ci/pre_push.sh` 的 Gateway block 前加入：
 
 ```bash
-if matches_any '^src/dotnet/|^scripts/dotnet/'; then
+if matches_any '^dotnet/|^scripts/dotnet/'; then
   # .NET 默认没有独立 SAST-only 命令；完整 build/test 在 full CI 模式运行。
   run_heavy "$repo_root/scripts/ci/dotnet_ci.sh"
 fi
@@ -1201,7 +1201,7 @@ fi
 同时把架构文档或 CI 脚本变更触发模式扩展为：
 
 ```bash
-if matches_any '^(src/dotnet/|scripts/dotnet/|docs/arch/(arch\.rules|ci\.enforce|context-boundary-format|protocol-contract-tests)\.md)'; then
+if matches_any '^(dotnet/|scripts/dotnet/|docs/arch/(arch\.rules|ci\.enforce|context-boundary-format|protocol-contract-tests)\.md)'; then
   run_heavy "$repo_root/scripts/ci/dotnet_ci.sh"
 fi
 ```
@@ -1228,7 +1228,7 @@ fi
         shell: bash
         run: |
           git fetch --no-tags --depth=1 origin "${DOTNET_BASE_REF#origin/}" 2>/dev/null || true
-          if git diff --quiet "$DOTNET_BASE_REF" -- src/dotnet scripts/dotnet docs/arch; then
+          if git diff --quiet "$DOTNET_BASE_REF" -- dotnet scripts/dotnet docs/arch; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -1239,7 +1239,7 @@ fi
         with:
           dotnet-version: '10.0.302'
           cache: true
-          cache-dependency-path: src/dotnet/**/packages.lock.json
+          cache-dependency-path: dotnet/**/packages.lock.json
       - name: Set up Python
         if: steps.changes.outputs.skip != 'true'
         uses: actions/setup-python@v5
@@ -1260,7 +1260,7 @@ fi
 ```markdown
 ### .NET 10 gate
 
-Changes under `src/dotnet/`, `scripts/dotnet/`, or the architecture contract documents trigger `scripts/ci/dotnet_ci.sh`. The gate requires locked restore, formatting, warnings-as-errors build, xUnit architecture/contract tests, a reproducible migration inventory, and parity-corpus checksum tests. Core and contract projects must remain framework-independent; Service API and Plugin API stay in separate projects and test suites.
+Changes under `dotnet/`, `scripts/dotnet/`, or the architecture contract documents trigger `scripts/ci/dotnet_ci.sh`. The gate requires locked restore, formatting, warnings-as-errors build, xUnit architecture/contract tests, a reproducible migration inventory, and parity-corpus checksum tests. Core and contract projects must remain framework-independent; Service API and Plugin API stay in separate projects and test suites.
 ```
 
 - [ ] **Step 7: 运行测试和完整 .NET gate**
@@ -1332,7 +1332,7 @@ Expected: 输出包含 `scripts/ci/dotnet_ci.sh` 的 required gate，且 dry-run
 Run：
 
 ```powershell
-$forbidden = Select-String -Path src/dotnet/**/*.csproj -Pattern 'OpenClaw\.|Microsoft\.Orleans\.Server|TickerQ|EntityFrameworkCore|Minio|Qdrant|Sonnet' -AllMatches
+$forbidden = Select-String -Path dotnet/**/*.csproj -Pattern 'OpenClaw\.|Microsoft\.Orleans\.Server|TickerQ|EntityFrameworkCore|Minio|Qdrant|Sonnet' -AllMatches
 if ($forbidden) { $forbidden; exit 1 }
 Write-Output 'foundation dependency boundary: pass'
 ```
@@ -1344,7 +1344,7 @@ Expected: `foundation dependency boundary: pass`。
 Run：
 
 ```powershell
-$inventory = Get-Content src/dotnet/contracts/migration-inventory.json -Raw | ConvertFrom-Json
+$inventory = Get-Content dotnet/contracts/migration-inventory.json -Raw | ConvertFrom-Json
 $inventory.services.PSObject.Properties.Name | Sort-Object
 python -m pytest scripts/dotnet/tests -v
 ```
@@ -1354,7 +1354,7 @@ Expected: 服务名依次为 `baas`、`backend`、`bcsfuse`、`engine`、`gatewa
 - [ ] **Step 6: 写阶段验收提交（仅在验证产生必要 lock file 变化时）**
 
 ```bash
-git add src/dotnet/**/packages.lock.json
+git add dotnet/**/packages.lock.json
 git diff --cached --quiet || git commit -m "build(dotnet): lock foundation dependencies"
 ```
 

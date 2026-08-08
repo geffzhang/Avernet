@@ -61,7 +61,7 @@ graph TD
 
 产物：
 
-- `src/dotnet/Ocb.slnx` 和中央构建配置；
+- `dotnet/Ocb.slnx` 和中央构建配置；
 - `Ocb.Contracts`、`Ocb.Core`、`Ocb.PluginApi`、`Ocb.Configuration`；
 - `Ocb.Architecture.Tests`、`Ocb.Contracts.Tests`；
 - 每个项目的 `context-boundary.json`；

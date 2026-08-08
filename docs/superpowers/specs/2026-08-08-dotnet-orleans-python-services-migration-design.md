@@ -87,7 +87,7 @@ singlebox 可以将这些 Host 放入同一容器，但仍须保持进程和所�
 ### Solution 目录
 
 ```text
-src/dotnet/
+dotnet/
   Ocb.slnx
   Directory.Build.props
   Directory.Packages.props
