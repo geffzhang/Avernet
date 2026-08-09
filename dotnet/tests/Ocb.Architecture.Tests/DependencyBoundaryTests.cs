@@ -96,6 +96,13 @@ public sealed class DependencyBoundaryTests
     }
 
     [Fact]
+    public void ChannelsHasNoProjectReferences()
+    {
+        var project = LoadProject("Ocb.Channels");
+        Assert.Empty(FindElements(project, "ProjectReference"));
+    }
+
+    [Fact]
     public void GatewayReferencesOnlyAllowedProjects()
     {
         var project = LoadProject("Ocb.Gateway");

@@ -1,0 +1,7 @@
+{
+  "purpose": "传输层 WebSocket 基础能力（fragment 聚合、raw/JSON envelope、速率限制、串行发送），不承载业务域 DTO 或消息通道适配器逻辑。",
+  "provides": ["WebSocketChannelOptions", "IWebSocketEnvelopeCodec", "RawEnvelopeCodec", "JsonEnvelopeCodec", "FragmentAccumulator", "ConnectionRateLimiter", "SerialSendGate", "WebSocketChannelSession", "IWebSocketUpstreamDuplex"],
+  "consumes": ["System.Net.WebSockets.WebSocket"],
+  "internal_dependencies": [],
+  "change_impact": "传输层原语变化会影响 Gateway 的 WebSocket 代理端点，但不影响 Grain 层或业务逻辑。"
+}
