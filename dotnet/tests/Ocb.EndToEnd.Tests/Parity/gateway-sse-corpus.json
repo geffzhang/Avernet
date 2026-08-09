@@ -1,0 +1,17 @@
+{
+  "version": "ocb-sse-parity-v1",
+  "cases": [
+    {
+      "id": "chat-stream-basic",
+      "description": "Basic chat stream: open SSE, receive message events, receive end marker.",
+      "path": "/openapi/v1/chat/messages/stream",
+      "expectedEventTypes": ["message", "message", "end"]
+    },
+    {
+      "id": "chat-stream-interrupted",
+      "description": "Client disconnects mid-stream: events stop flowing, no error in flight.",
+      "path": "/openapi/v1/chat/messages/stream",
+      "expectedEventTypes": ["message", "message"]
+    }
+  ]
+}

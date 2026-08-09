@@ -1,0 +1,17 @@
+{
+  "version": "ocb-ws-parity-v1",
+  "cases": [
+    {
+      "id": "bots-messages-basic",
+      "description": "Basic bot message relay: connect, send message, receive echo, disconnect.",
+      "path": "/openapi/v1/collaboration/messages/ws",
+      "expectedFrameTypes": ["connected", "echo:hello", "closed"]
+    },
+    {
+      "id": "sessions-join-leave",
+      "description": "Session lifecycle: join session, receive participant list, leave session.",
+      "path": "/openapi/v1/collaboration/messages/ws",
+      "expectedFrameTypes": ["connected", "session_joined", "participants_updated", "session_left", "closed"]
+    }
+  ]
+}
