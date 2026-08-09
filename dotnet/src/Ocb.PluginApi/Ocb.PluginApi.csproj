@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\Ocb.Channels\Ocb.Channels.csproj" />
   </ItemGroup>
 
 </Project>

@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ocb.Gateway\Ocb.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.Channels\Ocb.Channels.csproj" />
   </ItemGroup>
 
 </Project>

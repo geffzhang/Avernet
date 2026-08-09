@@ -17,6 +17,7 @@
     <ProjectReference Include="..\Ocb.Contracts\Ocb.Contracts.csproj" />
     <ProjectReference Include="..\Ocb.PluginApi\Ocb.PluginApi.csproj" />
     <ProjectReference Include="..\Ocb.Configuration\Ocb.Configuration.csproj" />
+    <ProjectReference Include="..\Ocb.Channels\Ocb.Channels.csproj" />
   </ItemGroup>
 
   <ItemGroup>
