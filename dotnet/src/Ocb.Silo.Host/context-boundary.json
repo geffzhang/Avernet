@@ -1,0 +1,7 @@
+{
+  "purpose": "Silo 宿主进程：加载 Orleans 集群、持久化、Stream 和 Reminder 提供者，注册 Grain 实现，启动 Silo。",
+  "provides": ["SiloBootstrap", "SiloReadinessCheck"],
+  "consumes": ["ISecretResolver", "TenantKeyGuardCallFilter", "ConnectionDirectoryGrain"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.GrainContracts", "Ocb.Grains", "Ocb.PluginApi"],
+  "change_impact": "Silo 组合根变化会影响集群启动、Grain 注册和所有后端服务间通信。"
+}
