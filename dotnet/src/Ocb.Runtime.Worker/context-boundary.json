@@ -1,0 +1,7 @@
+{
+  "purpose": "Runtime Worker：管理本地进程、workspace 和端口等非可序列化资源，通过 Grain 协调 desired/observed 状态。",
+  "provides": ["SessionParityController", "EngineWsEndpoint", "RuntimeAssignmentCoordinator", "WorkerProcessRuntime", "WorkspaceIsolationService", "OrphanRecoveryService"],
+  "consumes": ["CallerContext", "IPrincipalTokenVerifier", "IWasmRuntime", "IRuntimeSkillMaterializationService"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi", "Ocb.GrainContracts"],
+  "change_impact": "Runtime Worker 组合根变化会影响 Bot 进程启动、workspace 分配与 Engine 协议路由。"
+}

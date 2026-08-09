@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\Ocb.PluginApi\Ocb.PluginApi.csproj" />
+    <ProjectReference Include="..\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
+  </ItemGroup>
+
+</Project>
