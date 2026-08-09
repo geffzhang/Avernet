@@ -6,11 +6,11 @@
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
-
   <!-- Orleans -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.Orleans.Sdk" Version="10.2.2" />
@@ -19,7 +19,6 @@
     <PackageVersion Include="Microsoft.Orleans.Clustering.AdoNet" Version="10.2.2" />
     <PackageVersion Include="Microsoft.Orleans.Persistence.AdoNet" Version="10.2.2" />
     <PackageVersion Include="Microsoft.Orleans.Streaming" Version="10.2.2" />
-    <PackageVersion Include="Microsoft.Orleans.Streaming.SMS" Version="10.2.2" />
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="10.2.2" />
     <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="10.2.2" />
     <PackageVersion Include="Npgsql" Version="9.0.3" />

@@ -1,0 +1,7 @@
+{
+  "purpose": "实现 Orleans Grain：ConnectionDirectory 租户范围路由、lease 管理、Stream 分发与 tenant-key 守卫。",
+  "provides": ["ConnectionDirectoryGrain", "ConnectionDirectoryState", "TenantKeyGuardCallFilter"],
+  "consumes": ["IConnectionDirectoryGrain", "ConnectionRoute", "CallerContext", "IPersistentState<T>", "IAsyncStream<T>"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.GrainContracts"],
+  "change_impact": "Grain 实现变化会影响 Gateway Client 租约同步、Silo Host 依赖注入和 Stream 路由行为。"
+}
