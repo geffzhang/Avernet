@@ -95,4 +95,21 @@ public sealed class DependencyBoundaryTests
         var segments = path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
         return segments.Any(candidate => string.Equals(candidate, segment, StringComparison.OrdinalIgnoreCase));
     }
+
+    [Fact]
+    public void GatewayReferencesOnlyAllowedProjects()
+    {
+        var project = LoadProject("Ocb.Gateway");
+        var references = FindElements(project, "ProjectReference")
+            .Select(GetIncludeAttribute)
+            .Where(include => include is not null)
+            .Select(include => Path.GetFileNameWithoutExtension(include!))
+            .Order()
+            .ToArray();
+
+        // Gateway must reference Contracts, PluginApi, and Configuration.
+        // It must NOT reference Ocb.Core (core logic does not belong in the web host).
+        Assert.Equal(["Ocb.Configuration", "Ocb.Contracts", "Ocb.PluginApi"], references);
+        Assert.DoesNotContain("Ocb.Core", references);
+    }
 }
