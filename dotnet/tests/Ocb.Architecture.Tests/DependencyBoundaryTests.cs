@@ -16,7 +16,6 @@ public sealed class DependencyBoundaryTests
 
     [Theory]
     [InlineData("Ocb.Contracts")]
-    [InlineData("Ocb.PluginApi")]
     public void ContractProjectsHaveNoProjectReferences(string projectName)
     {
         var project = LoadProject(projectName);

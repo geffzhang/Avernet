@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Ocb.Contracts;
 using Ocb.PluginApi;
 
 namespace Ocb.Gateway.Tests.Composition;
@@ -38,8 +39,11 @@ public sealed class GatewayWebApplicationFactory : WebApplicationFactory<Program
             if (_registerPrincipalVerifier)
             {
                 services.AddSingleton<IPrincipalTokenVerifier>(
-                    new FakePrincipalTokenVerifier());
+                    new DefaultTestPrincipalVerifier());
             }
+            // IAccessKeyResolver is required by PrincipalVerificationMiddleware.
+            services.AddSingleton<IAccessKeyResolver>(
+                new DefaultTestAccessKeyResolver());
         });
     }
 }
@@ -54,6 +58,25 @@ public static class GatewayTestHost
     }
 }
 
-internal sealed class FakePrincipalTokenVerifier : IPrincipalTokenVerifier
+internal sealed class DefaultTestPrincipalVerifier : IPrincipalTokenVerifier
 {
+    public ValueTask<CallerContext> VerifyAsync(
+        string bearerToken,
+        string signedPrincipalHeader,
+        CancellationToken cancellationToken)
+    {
+        var roles = new HashSet<string>(StringComparer.Ordinal) { "user" };
+        return ValueTask.FromResult(new CallerContext("test-tenant", "test-user", roles));
+    }
+}
+
+internal sealed class DefaultTestAccessKeyResolver : IAccessKeyResolver
+{
+    public ValueTask<AccessKeyResult?> ResolveAsync(
+        string accessKeyToken,
+        CancellationToken cancellationToken)
+    {
+        // Default: no access key match — return null (no access key identity).
+        return ValueTask.FromResult<AccessKeyResult?>(null);
+    }
 }

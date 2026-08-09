@@ -16,6 +16,11 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// Principal verification middleware — validates JWT bearer token
+// together with X-Avernet-Principal header. Enabled once
+// IPrincipalTokenVerifier plugin is registered in DI.
+// app.UseMiddleware<PrincipalVerificationMiddleware>();
+
 app.MapHealthChecks("/health/ready");
 
 app.Run();

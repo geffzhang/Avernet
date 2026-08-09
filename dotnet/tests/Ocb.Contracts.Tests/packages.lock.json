@@ -106,7 +106,10 @@
         "type": "Project"
       },
       "ocb.pluginapi": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )"
+        }
       }
     }
   }

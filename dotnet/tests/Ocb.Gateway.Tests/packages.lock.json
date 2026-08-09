@@ -619,7 +619,10 @@
         }
       },
       "ocb.pluginapi": {
-        "type": "Project"
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )"
+        }
       },
       "Microsoft.Orleans.Clustering.AdoNet": {
         "type": "CentralTransitive",
