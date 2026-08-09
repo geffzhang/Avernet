@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
     <ProjectReference Include="..\..\src\Ocb.PluginApi\Ocb.PluginApi.csproj" />
     <ProjectReference Include="..\..\src\Ocb.Configuration\Ocb.Configuration.csproj" />
   </ItemGroup>
