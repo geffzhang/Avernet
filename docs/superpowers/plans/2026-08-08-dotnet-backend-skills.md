@@ -60,10 +60,10 @@
   - 责任：HTTP parity（对照 `dotnet/contracts/parity-corpus/backend.openapi.json`）与关键用户故事。
 
 **⚠️ 跨-Plan 项目创建协调：**
-- `Ocb.GrainContracts/Ocb.GrainContracts.csproj` + `context-boundary.json` 由 **gateway-channels plan (Task 1)** 作为共享骨架创建。本 plan 只在已有项目中追加 `Bot/`、`Session/`、`Device/`、`GrainKeys/` 等子目录和接口文件，**不重新创建 .csproj 文件**。
-- `Ocb.Grains/Ocb.Grains.csproj` + `context-boundary.json` 同样由 **gateway-channels plan (Task 1)** 创建。本 plan 只在已有项目中追加 `Bot/`、`Session/`、`Device/` 实现文件。
+- `Ocb.GrainContracts/Ocb.GrainContracts.csproj` + `context-boundary.json` 由 **gateway-channels plan (Task 7a)** 作为共享骨架创建。本 plan 只在已有项目中追加 `Bot/`、`Session/`、`Device/`、`GrainKeys/` 等子目录和接口文件，**不重新创建 .csproj 文件**。
+- `Ocb.Grains/Ocb.Grains.csproj` + `context-boundary.json` 同样由 **gateway-channels plan (Task 7b)** 创建。本 plan 只在已有项目中追加 `Bot/`、`Session/`、`Device/` 实现文件。
 - `Ocb.Infrastructure.PostgreSql/Ocb.Infrastructure.PostgreSql.csproj` + `context-boundary.json` 由 **baas plan (Task 1)** 作为共享骨架创建。本 plan 只在已有项目中追加 `Skills/`、`Identity/`、`Assets/` 等子目录和 EF Core 实体，**不重新创建 .csproj 文件**。`ocb_business` schema 是共享 schema，本 plan 的 EF Core DbContext 通过 bounded context 隔离查询。
-- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 1（获 GrainContracts/Grains 骨架）和 baas plan Task 1（获 PostgreSql 骨架），再执行本 plan。
+- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 7（获 GrainContracts/Grains 骨架）和 baas plan Task 1（获 PostgreSql 骨架），再执行本 plan。
 
 ### Baseline References (必须先读后改)
 

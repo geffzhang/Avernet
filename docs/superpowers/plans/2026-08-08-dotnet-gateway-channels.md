@@ -37,6 +37,7 @@
 - `dotnet/src/Ocb.Channels/`
   - 责任：传输层 WebSocket 基础能力（fragment 聚合、raw/JSON envelope、速率限制、串行发送）——**不是消息通道适配器**（不实现 `IChannelAdapter`），而是为 Gateway 代理中继提供可复用的传输层原语。
   - 边界：不依赖特定业务域 DTO，不引用 OpenClaw。
+  - **命名说明：** 项目名 `Ocb.Channels` 指"传输层通道基础能力"（基于 `System.Threading.Channels` 和原生 WebSocket），**不是** openclaw.net 中的"消息通道适配器"（`IChannelAdapter` 用于入站消息通道如 WhatsApp/Telegram/Discord）。此项目只提供 `FragmentAccumulator`、`ConnectionRateLimiter`、`SerialSendQueue`、`WebSocketChannelSession` 等可复用的传输层原语，供 `Ocb.Gateway` 的 WebSocket 代理端点消费。
 - `dotnet/src/Ocb.GrainContracts/`
   - 责任：`ConnectionDirectoryGrain` 契约、消息路由契约、lease 模型。
   - 边界：只含 Orleans 接口/DTO，不含实现。
@@ -200,6 +201,7 @@ git commit -m "feat(gateway): add strict composition root and readiness checks"
 - Modify: `dotnet/src/Ocb.PluginApi/IPluginContract.cs`
 - Create: `dotnet/src/Ocb.PluginApi/GatewayIdentityContracts.cs`
 - Create: `dotnet/src/Ocb.PluginApi/GatewaySecretContracts.cs`
+- Create: `dotnet/src/Ocb.PluginApi/GatewayCacheContracts.cs`
 - Create: `dotnet/src/Ocb.Gateway/Auth/PrincipalVerificationMiddleware.cs`
 - Create: `dotnet/src/Ocb.Gateway/Auth/CallerContextFactory.cs`
 - Create: `dotnet/src/Ocb.Gateway/Auth/WebSocketHandshakeMethodBinder.cs`
@@ -216,6 +218,7 @@ git commit -m "feat(gateway): add strict composition root and readiness checks"
   - `public interface IPrincipalTokenVerifier : IPluginContract { ValueTask<CallerContext> VerifyAsync(string bearerToken, string signedPrincipalHeader, CancellationToken cancellationToken); }`
   - `public interface IAccessKeyResolver : IPluginContract { ValueTask<(string TenantId, string SubjectId, IReadOnlySet<string> Roles)?> ResolveAsync(string accessKeyToken, CancellationToken cancellationToken); }`
   - `public interface ISecretResolver : IPluginContract { ValueTask<string> ResolveAsync(string secretKey, CancellationToken cancellationToken); }`
+  - `public interface ICacheProvider : IPluginContract { ValueTask<T?> GetAsync<T>(string key, CancellationToken ct); ValueTask SetAsync<T>(string key, T value, TimeSpan ttl, CancellationToken ct); ValueTask RemoveAsync(string key, CancellationToken ct); }`
   - `public static class CallerContextFactory { public static CallerContext Create(string tenantId, string subjectId, IReadOnlySet<string> roles); }`
   - `public static class WebSocketHandshakeMethodBinder { public const string HandshakeMethod = "WEBSOCKET"; }`
   - `public sealed class TenantConsistencyFilter : IEndpointFilter`
@@ -223,6 +226,7 @@ git commit -m "feat(gateway): add strict composition root and readiness checks"
 **设计说明（对齐 Python `_relay_ws.py`）：**
 
 - **`ISecretResolver`**：对应 Python `spi/secret_resolver.py`。Spec 要求 "API key、模型凭据、MinIO 凭据、BCS secret 和 SM4 key 通过 Secret Plugin 解析"。Gateway 在构建 upstream 请求时需要解析 secret（例如 BCS access key），但不能把 secret 写入日志或 Grain State。此接口先在此 Task 定义契约，具体实现由各 domain plan 提供。
+- **`ICacheProvider`**：对应 Python `spi/cache.py`。Spec 明确 "Redis 是可选组件，只能用于 cache、分布式 rate counter 或其他明确的非权威加速用途"。此接口定义非权威缓存的通用契约（Get/Set/Remove + TTL），Gateway 使用它做分布式速率限制 counter。Redis 不可用时 Provider 实现降级为本地内存缓存。
 - **`WebSocketHandshakeMethodBinder.HandshakeMethod = "WEBSOCKET"`**：对应 Python `_relay_ws.py:97` `_HANDSHAKE_METHOD = "WEBSOCKET"`。WebSocket 握手在 HTTP 层面是 `GET`，但 route-security table 的鉴权使用独立的 `WEBSOCKET` method key。这样 WS 路径上的 "no identity required" 豁免只对 WS 平面生效，不会泄漏到同一路径的 HTTP GET 请求。`IPrincipalTokenVerifier.VerifyAsync` 接收此 method 参数以区分 HTTP 与 WS 鉴权规则。
 
 - [ ] **Step 1: 写失败测试（401/403、CallerContext 注入、WS method 豁免隔离、secret 解析）**
@@ -477,9 +481,17 @@ git commit -m "feat(gateway): add domain forwarding map and served schema catalo
 **Interfaces:**
 
 - Consumes: `CallerContext`, `IPrincipalTokenVerifier`。
+- Produces: HTTP forwarding with signed principal injection, transparent streaming, and error mapping.
+
+**设计说明（对齐 Python `_forward.py`）：**
+
+- **`IHopByHopHeaderFilter`**：对应 Python `_forward.py` `strip_hop_by_hop` 函数和 `_INBOUND_STRIP = frozenset({"host", "x-avernet-principal"})`。定义标准的 hop-by-hop header 集合（Connection、Keep-Alive、Transfer-Encoding、TE、Trailer、Upgrade、Proxy-Authorization、Proxy-Authenticate），并提供 `ShouldStrip` 方法。Gateway 在转发请求前和返回响应时都要过滤。
+- **`IPrincipalTokenSigner`**：对应 Python `spi/principal_signer.py`。Gateway 在转发前剥离入站 `X-Avernet-Principal`（防止伪造）并用新签名替换。
+- **`IHttpForwarder`**：对应 Python `spi/forwarder.py`。透明转发 HTTP 请求/响应，保持流式 body 和错误语义。
 - Produces:
   - `public interface IPrincipalTokenSigner : IPluginContract { ValueTask<string> SignAsync(CallerContext callerContext, string audience, CancellationToken cancellationToken); }`
   - `public interface IHttpForwarder : IPluginContract { ValueTask<ForwardResponse> ForwardAsync(ForwardRequest request, CancellationToken cancellationToken); }`
+  - `public interface IHopByHopHeaderFilter : IPluginContract { IReadOnlySet<string> HopByHopHeaders { get; } bool ShouldStrip(string headerName); }`
   - `public static class PrincipalHeaderInjector { public static ForwardRequest InjectSignedPrincipal(ForwardRequest request, string signedToken); }`
 
 - [ ] **Step 1: 写失败测试（剥离伪造头、注入签名头、SSE 透明转发）**
@@ -1687,6 +1699,8 @@ git commit -m "test(gateway): add nbomber baseline for http ws sse"
 - Composition Root/强配置/readiness：Task 1。
 - CallerContext/JWT/X-Avernet-Principal/access key/tenant 复核：Task 2。
 - **ISecretResolver Plugin API**：Task 2（`GatewaySecretContracts.cs`，对齐 Python `spi/secret_resolver.py`）。
+- **ICacheProvider Plugin API**：Task 2（`GatewayCacheContracts.cs`，对齐 Python `spi/cache.py`，非权威缓存，Redis 不可用时降级本地）。
+- **IHopByHopHeaderFilter Plugin API**：Task 4（`ForwardingContracts.cs`，对齐 Python `_forward.py` `strip_hop_by_hop` + `_INBOUND_STRIP`）。
 - **WS 握手 method 隔离**：Task 2（`WebSocketHandshakeMethodBinder.HandshakeMethod = "WEBSOCKET"`，对齐 Python `_relay_ws.py:97`）。
 - path/domain forwarding + Schema Catalog：Task 3。
 - 原生 WebSocket fragments/raw+JSON/rate limits/serial send/cleanup：Task 5 + Task 6。

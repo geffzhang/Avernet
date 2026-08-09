@@ -4,7 +4,23 @@
 
 **Goal:** 在不引入 Python bridge、不缩减能力面的前提下，交付 `Ocb.Baas` 在 .NET 10 上的完整服务能力：health、Device、Template、tenant、透明 invoke-http/API gateway、发布/运行队列、QPM、TTL、SSE、SM4、Docker/K8s sandbox conformance，并完成 BaaS HTTP parity 与生命周期 E2E。
 
-**Architecture:** 采用“Contracts/PluginApi/Core/Adapters/Providers/Infra/PostgreSql/Test”分层。`Ocb.Baas` 仅实现 BaaS 领域编排；`Ocb.Infrastructure.PostgreSql` 承担 `ocb_business` 读写；`Ocb.Plugins.*` 承担第三方边界（Docker、K8s、Crypto、Queue）；跨域边界上，`Ocb.Baas` 不直接读取 Backend/Fusion 内部数据，仅使用 `Ocb.Contracts` 与 `Ocb.PluginApi` 对外契约。
+**Architecture:** 采用”Contracts/PluginApi/Core/Adapters/Providers/Infra/PostgreSql/Test”分层。`Ocb.Baas` 仅实现 BaaS 领域编排；`Ocb.Infrastructure.PostgreSql` 承担 `ocb_business` 读写；`Ocb.Plugins.*` 承担第三方边界（Docker、K8s、Crypto、Queue）；跨域边界上，`Ocb.Baas` 不直接读取 Backend/Fusion 内部数据，仅使用 `Ocb.Contracts` 与 `Ocb.PluginApi` 对外契约。
+
+**Orleans Grain 使用边界：**
+
+BaaS 域中只有具备稳定身份且满足至少一项 Orleans 条件（可变持久状态、串行并发、激活/停用生命周期、分布式协调）的实体才使用 Grain。具体划分：
+
+| 实体 | 使用 Grain? | 理由 |
+|------|------------|------|
+| Device | ✅ `IDeviceGrain` | 具有可变持久状态、激活/停用生命周期（TTL）、需要串行处理命令 |
+| Template | ❌ 无状态服务 | 只读模板定义，无可变状态，通过 `ITemplateServiceContract` 直接查询 PostgreSQL |
+| Tenant | ❌ 无状态服务 | 租户元数据 CRUD，无并发协调需求 |
+| Bot Publish | ❌ 状态机服务 | 发布生命周期通过 `IPublishServiceContract` + PostgreSQL 管理，状态转换已由 DB 事务保证原子性 |
+| Bot Run Queue | ❌ 队列抽象 | 通过 `IBotRunQueueProvider` Plugin API 委托给 PostgreSQL outbox/queue，不建模为 Grain |
+| invoke-http / API gateway | ❌ 无状态转发 | HTTP 转发和 API gateway 是传输层职责，不能建模为 Grain（对齐 Spec 约束） |
+| QPM counter | ❌ 可选 Redis | QPM 计数器通过 Redis cache（`ICacheProvider`）实现分布式速率统计，Redis 不可用时降级为本地计数器 |
+
+`IDeviceGrain` 的 Grain Key 使用 tenant-scoped key `(tenant_id, device_id)`，入口通过 `TenantKeyGuardCallFilter` 做二次 tenant 校验。Grain 实现只做薄协调（desired/observed 状态），实际的 sandbox 操作、HTTP 转发、加密等通过 Service API 和 Plugin API 完成。
 
 **Tech Stack:** .NET 10, ASP.NET Core, Orleans (仅协调层), EF Core + Npgsql, PostgreSQL schema `ocb_business`, xUnit, Testcontainers, NBomber（性能基线在后续阶段）。
 
@@ -20,6 +36,7 @@
 - Docker/K8s 需要同一 conformance suite；singlebox/cluster 都要可验证。
 - 与 Backend/Fusion 边界明确：BaaS 不越权直接依赖 Backend/Fusion 内部实现，不修改其所有权模型。
 - 透明 invoke-http/API gateway 行为保持现有 HTTP 语义，包含 hop-by-hop header 过滤与错误映射。
+- 所有 Service Contract 方法必须显式接受 `CallerContext` 参数；tenant identity 通过 `CallerContext` 传递，不得依赖 ambient process state 或 HTTP context 隐式获取。
 - 全任务按 TDD：先 RED，再最小实现 GREEN，再提交。
 
 ---
@@ -92,29 +109,45 @@
   - `public interface IHealthServiceContract`
   - 新生产项目的 `context-boundary.json`；`internal_dependencies` 必须逐项匹配 csproj 的 `ProjectReference`
 
-- [ ] **Step 1: 写失败测试（契约缺失）**
+> **CallerContext 显式传递：** 所有 Service Contract 方法必须包含 `CallerContext` 参数，tenant identity 通过 CallerContext 显式传递。Gateway 在鉴权后将 `CallerContext` 注入 HttpContext.Items，Delivery Adapter 负责从 HttpContext 提取并传递给 Service Contract。
+
+- [ ] **Step 1: 写失败测试（契约缺失 + CallerContext 必传）**
 
 ```csharp
 [Fact]
 public void DeviceContract_MustExpose_InvokeHttp_And_WsInfo()
 {
     var type = typeof(IDeviceServiceContract);
-    Assert.NotNull(type.GetMethod("InvokeHttpAsync"));
+    var invokeMethod = type.GetMethod("InvokeHttpAsync");
+    Assert.NotNull(invokeMethod);
+    // CallerContext 必须是显式参数
+    Assert.Contains(invokeMethod.GetParameters(), p => p.ParameterType == typeof(CallerContext));
     Assert.NotNull(type.GetMethod("ResolveWsInfoAsync"));
+}
+
+[Fact]
+public void DeviceContract_Methods_MustNotAcceptHttpContext()
+{
+    var type = typeof(IDeviceServiceContract);
+    foreach (var method in type.GetMethods())
+    {
+        Assert.DoesNotContain(method.GetParameters(), 
+            p => p.ParameterType == typeof(Microsoft.AspNetCore.Http.HttpContext));
+    }
 }
 ```
 
 - [ ] **Step 2: RED 验证**
 Run: `dotnet test dotnet/tests/Ocb.Baas.Contracts.Tests/Ocb.Baas.Contracts.Tests.csproj --filter DeviceContract_MustExpose_InvokeHttp_And_WsInfo`
-Expected: FAIL，`IDeviceServiceContract` 或方法不存在。
+Expected: FAIL，`IDeviceServiceContract` 或方法不存在，或缺少 `CallerContext` 参数。
 
-- [ ] **Step 3: 最小实现（签名先行）**
+- [ ] **Step 3: 最小实现（签名先行，含 CallerContext）**
 
 ```csharp
 public interface IDeviceServiceContract
 {
-    Task<InvokeHttpResult> InvokeHttpAsync(InvokeHttpRequest request, CancellationToken ct);
-    Task<WsConnectionInfo> ResolveWsInfoAsync(ResolveWsInfoRequest request, CancellationToken ct);
+    Task<InvokeHttpResult> InvokeHttpAsync(CallerContext caller, InvokeHttpRequest request, CancellationToken ct);
+    Task<WsConnectionInfo> ResolveWsInfoAsync(CallerContext caller, ResolveWsInfoRequest request, CancellationToken ct);
 }
 ```
 
@@ -280,7 +313,8 @@ git commit -m "feat(baas): initialize ocb_business postgres schema for baas doma
 public async Task GetTemplate_ShouldReturn404_WhenTenantMismatch()
 {
     var svc = CreateTemplateService();
-    await Assert.ThrowsAsync<ResourceNotFoundException>(() => svc.GetTemplateAsync("tenant-b", "template-of-tenant-a", CancellationToken.None));
+    var caller = new CallerContext("tenant-b", "u-1", new HashSet<string>{"user"});
+    await Assert.ThrowsAsync<ResourceNotFoundException>(() => svc.GetTemplateAsync(caller, "template-of-tenant-a", CancellationToken.None));
 }
 ```
 
@@ -291,9 +325,9 @@ Expected: FAIL，当前返回了跨租户数据或异常类型不符。
 - [ ] **Step 3: 最小实现（显式 tenant predicate）**
 
 ```csharp
-public async Task<TemplateDto> GetTemplateAsync(string tenant, string templateUuid, CancellationToken ct)
+public async Task<TemplateDto> GetTemplateAsync(CallerContext caller, string templateUuid, CancellationToken ct)
 {
-    var entity = await _templateRepository.GetByTenantAndUuidAsync(tenant, templateUuid, ct);
+    var entity = await _templateRepository.GetByTenantAndUuidAsync(caller.TenantId, templateUuid, ct);
     return entity is null ? throw new ResourceNotFoundException("TEMPLATE_NOT_FOUND") : Map(entity);
 }
 ```
@@ -802,6 +836,8 @@ git commit -m "test(baas): add http parity and lifecycle e2e with sandbox profil
 - SM2 排除：Global Constraints 明确排除。
 - 不做 SQLite parity，采用 Postgres 新系统：Global Constraints + Task 3 明确。
 - 与 Backend/Fusion 边界清晰：Global Constraints + Task 11 明确。
+- **Orleans Grain 使用边界：** Architecture 段新增 Grain 使用边界表，明确 Device 用 Grain（有 lifecycle+state+serial），Template/Tenant/Publish/Queue/invoke-http/QPM 保持无状态。
+- **CallerContext 显式传递：** Global Constraints 新增 + Task 1/4 所有 Service Contract 方法签名已补 `CallerContext` 参数。
 
 ## 自审（No-placeholder Check）
 

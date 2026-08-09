@@ -65,9 +65,9 @@
 - `dotnet/tests/Ocb.EndToEnd.Tests/Fusion/`
 
 **⚠️ 跨-Plan 项目创建协调：**
-- `Ocb.GrainContracts/Fusion/` 和 `Ocb.Grains/Fusion/` 是已有共享项目 `Ocb.GrainContracts` 和 `Ocb.Grains` 的子目录。这两个共享项目的 `.csproj` + `context-boundary.json` 骨架由 **gateway-channels plan (Task 1)** 创建。本 plan 只在已有项目中追加 `Fusion/` 子目录和文件，**不重新创建 .csproj 文件**。
-- `Ocb.Grains.Tests` 同样由 **gateway-channels plan (Task 1)** 创建骨架。本 plan 只在已有测试项目中追加 `Fusion/` 子目录。
-- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 1。
+- `Ocb.GrainContracts/Fusion/` 和 `Ocb.Grains/Fusion/` 是已有共享项目 `Ocb.GrainContracts` 和 `Ocb.Grains` 的子目录。这两个共享项目的 `.csproj` + `context-boundary.json` 骨架由 **gateway-channels plan (Task 7a/7b)** 创建。本 plan 只在已有项目中追加 `Fusion/` 子目录和文件，**不重新创建 .csproj 文件**。
+- `Ocb.Grains.Tests` 同样由 **gateway-channels plan (Task 7b)** 创建骨架。本 plan 只在已有测试项目中追加 `Fusion/` 子目录。
+- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 7。
 
 ---
 

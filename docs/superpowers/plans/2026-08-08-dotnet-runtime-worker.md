@@ -77,10 +77,10 @@
 - Ocb.Runtime.Worker 持有 typed client、进程与 workspace 实际执行、日志与健康检查。
 
 **⚠️ 跨-Plan 项目创建协调：**
-- `Ocb.GrainContracts/Ocb.GrainContracts.csproj` + `context-boundary.json` 由 **gateway-channels plan (Task 1)** 作为共享骨架创建。本 plan 只在 `Ocb.GrainContracts/Runtime/` 下追加子目录和接口文件，**不重新创建 .csproj 文件**。
-- `Ocb.Grains/Ocb.Grains.csproj` + `context-boundary.json` 同样由 **gateway-channels plan (Task 1)** 创建。本 plan 只在 `Ocb.Grains/Runtime/` 下追加实现文件。
-- `Ocb.Grains.Tests/Ocb.Grains.Tests.csproj` 由 **gateway-channels plan (Task 1)** 创建。本 plan 只在已存在的测试项目中追加 `Runtime/` 子目录。
-- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 1。
+- `Ocb.GrainContracts/Ocb.GrainContracts.csproj` + `context-boundary.json` 由 **gateway-channels plan (Task 7a)** 作为共享骨架创建。本 plan 只在 `Ocb.GrainContracts/Runtime/` 下追加子目录和接口文件，**不重新创建 .csproj 文件**。
+- `Ocb.Grains/Ocb.Grains.csproj` + `context-boundary.json` 同样由 **gateway-channels plan (Task 7b)** 创建。本 plan 只在 `Ocb.Grains/Runtime/` 下追加实现文件。
+- `Ocb.Grains.Tests/Ocb.Grains.Tests.csproj` 由 **gateway-channels plan (Task 7b)** 创建。本 plan 只在已存在的测试项目中追加 `Runtime/` 子目录。
+- 实施时检查：如果骨架尚未创建，先执行 gateway-channels plan Task 7。
 
 ---
 
@@ -375,6 +375,7 @@ git commit -m "feat(runtime): implement engine session HTTP parity endpoints"
 - Create: dotnet/src/Ocb.Runtime.Worker/Api/WebSocket/EngineWsEndpoint.cs
 - Create: dotnet/src/Ocb.Runtime.Worker/Api/WebSocket/EngineWsMethodDispatcher.cs
 - Create: dotnet/src/Ocb.Runtime.Worker/Api/WebSocket/EngineWsProtocolGuards.cs
+- Create: dotnet/src/Ocb.Runtime.Worker/Api/WebSocket/EngineWsConnectionAdmissionGate.cs
 - Create: dotnet/tests/Ocb.Runtime.Worker.Tests/Parity/EngineWsParityTests.cs
 
 **Interfaces:**
@@ -384,6 +385,11 @@ git commit -m "feat(runtime): implement engine session HTTP parity endpoints"
   - WS /api/openclaw/ws
   - connect challenge/response
   - req/res/event frame handling for chat.send, chat.abort, sessions.list, sessions.patch, sessions.delete, sessions.reset, interaction.resolve
+
+**设计说明（对齐 Python `ws_server.py`）：**
+
+- **Connection admission control**：对应 Python `ws_server.py:226-241` `load_max_connections()` + `ConnectionLimiter.try_acquire`。Engine WS endpoint 在 accept 前必须检查当前连接数是否超过 `MaxConnections` 上限；超限时返回 HTTP 503 并设置 `Retry-After` header。连接关闭时释放 slot。
+- **协议版本协商**：对应 Python `ws_server.py:330-339` `params.min_protocol > PROTOCOL_VERSION`。connect frame 携带 `params.min_protocol` 字段时，Engine WS endpoint 必须在握手阶段校验：如果 `min_protocol > PROTOCOL_VERSION`，拒绝连接并返回 error frame `{type:"res", ok:false, error:{code:"PROTOCOL_VERSION_MISMATCH", message:"..."}}`。此逻辑收进 `EngineWsProtocolGuards.ValidateProtocolVersion(int minProtocol)`。
 
 - [ ] **Step 1: 写失败测试（未知 method 必须返回 INVALID_REQUEST）**
 
@@ -396,6 +402,24 @@ public async Task UnknownMethod_ShouldReturnErrorFrame_InvalidRequest()
     frame.Ok.Should().BeFalse();
     frame.Error.Code.Should().Be("INVALID_REQUEST");
 }
+
+[Fact]
+public async Task ConnectExceedingMaxConnections_ShouldReturn503()
+{
+    // 预占满所有连接 slot
+    for (var i = 0; i < MaxConnections; i++) await ConnectAndHoldAsync();
+    var response = await _client.ConnectWebSocketAsync("/api/openclaw/ws");
+    Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    Assert.NotNull(response.Headers.RetryAfter);
+}
+
+[Fact]
+public async Task ConnectWithHigherProtocolVersion_ShouldFailWithVersionMismatch()
+{
+    var frame = await SendReqAsync("connect", new { params = new { min_protocol = 999 } });
+    frame.Ok.Should().BeFalse();
+    frame.Error.Code.Should().Be("PROTOCOL_VERSION_MISMATCH");
+}
 ```
 
 - [ ] **Step 2: RED**
@@ -406,15 +430,51 @@ Expected: FAIL（未实现 method guard 或错误码不匹配）。
 - [ ] **Step 3: 最小实现**
 
 ```csharp
-private static readonly HashSet<string> AllowedMethods = new(StringComparer.Ordinal)
+public static class EngineWsProtocolGuards
 {
-  "connect", "session.new", "sessions.list", "sessions.patch", "sessions.delete", "sessions.reset",
-  "chat.send", "chat.history", "chat.abort", "interaction.resolve", "interaction.pending.list",
-  "health.claude", "providers.available", "models.list"
-};
+    public const int ProtocolVersion = 3;
 
-public WsResponseFrame RejectUnknown(string id, string method) =>
-    WsResponseFrame.Error(id, "INVALID_REQUEST", $"Unknown method: {method}");
+    private static readonly HashSet<string> AllowedMethods = new(StringComparer.Ordinal)
+    {
+      "connect", "session.new", "sessions.list", "sessions.patch", "sessions.delete", "sessions.reset",
+      "chat.send", "chat.history", "chat.abort", "interaction.resolve", "interaction.pending.list",
+      "health.claude", "providers.available", "models.list"
+    };
+
+    public static WsResponseFrame? ValidateProtocolVersion(int? minProtocol)
+    {
+        if (minProtocol.HasValue && minProtocol.Value > ProtocolVersion)
+            return WsResponseFrame.Error(null, "PROTOCOL_VERSION_MISMATCH",
+                $"Client requires min_protocol={minProtocol}, server={ProtocolVersion}");
+        return null;
+    }
+
+    public static WsResponseFrame RejectUnknown(string id, string method) =>
+        WsResponseFrame.Error(id, "INVALID_REQUEST", $"Unknown method: {method}");
+
+    public static bool IsAllowed(string method) => AllowedMethods.Contains(method);
+}
+
+// Connection admission — 对应 Python ws_server.py:226-241
+public sealed class EngineWsConnectionAdmissionGate
+{
+    private readonly int _maxConnections;
+    private int _activeConnections;
+
+    public EngineWsConnectionAdmissionGate(int maxConnections) => _maxConnections = maxConnections;
+
+    public bool TryAcquire()
+    {
+        if (Interlocked.Increment(ref _activeConnections) > _maxConnections)
+        {
+            Interlocked.Decrement(ref _activeConnections);
+            return false;
+        }
+        return true;
+    }
+
+    public void Release() => Interlocked.Decrement(ref _activeConnections);
+}
 ```
 
 - [ ] **Step 4: GREEN**
@@ -816,6 +876,8 @@ git commit -m "test(runtime): add worker-loss reactivation and skills materializ
 - 进程句柄/本地路径不入 Grain 权威状态：Task 9。
 - reassign 为新内部协调能力非公开 API：Task 2, Task 10。
 - 不猜 wire contract：Task 2, Task 5, Task 10。
+- **Engine WS admission control（连接数限制）**：Task 5（`EngineWsConnectionAdmissionGate`，对齐 Python `ws_server.py:226-241` `ConnectionLimiter.try_acquire`）。
+- **协议版本协商**：Task 5（`EngineWsProtocolGuards.ValidateProtocolVersion`，对齐 Python `ws_server.py:330-339` `min_protocol > PROTOCOL_VERSION`）。
 - 命名方案 Ocb.GrainContracts/Ocb.Grains/Ocb.Runtime.Worker + API 分层：Task 1 + File Structure。
 - 禁止 OpenClaw.* 依赖/bridge：Task 1 + Global Constraints。
 
