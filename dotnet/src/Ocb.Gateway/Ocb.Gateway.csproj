@@ -10,11 +10,13 @@
     <PackageReference Include="Microsoft.Orleans.Sdk" />
     <PackageReference Include="Microsoft.Orleans.Runtime" />
     <PackageReference Include="Microsoft.Orleans.Clustering.AdoNet" />
+    <PackageReference Include="Microsoft.Orleans.Streaming" />
     <PackageReference Include="Npgsql" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
     <ProjectReference Include="..\Ocb.PluginApi\Ocb.PluginApi.csproj" />
     <ProjectReference Include="..\Ocb.Configuration\Ocb.Configuration.csproj" />
     <ProjectReference Include="..\Ocb.Channels\Ocb.Channels.csproj" />

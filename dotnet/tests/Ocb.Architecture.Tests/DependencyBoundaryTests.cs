@@ -115,7 +115,7 @@ public sealed class DependencyBoundaryTests
 
         // Gateway must reference Contracts, PluginApi, Configuration, and Channels.
         // It must NOT reference Ocb.Core (core logic does not belong in the web host).
-        Assert.Equal(["Ocb.Channels", "Ocb.Configuration", "Ocb.Contracts", "Ocb.PluginApi"], references);
+        Assert.Equal(["Ocb.Channels", "Ocb.Configuration", "Ocb.Contracts", "Ocb.GrainContracts", "Ocb.PluginApi"], references);
         Assert.DoesNotContain("Ocb.Core", references);
     }
 }

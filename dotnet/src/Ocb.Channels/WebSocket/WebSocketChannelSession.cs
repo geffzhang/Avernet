@@ -14,6 +14,12 @@ public sealed class WebSocketChannelSession : IDisposable
     private readonly SerialSendGate _sendGate;
     private readonly IWebSocketEnvelopeCodec _envelopeCodec;
 
+    /// <summary>
+    /// The client WebSocket for out-of-band sends (e.g., from stream dispatch).
+    /// Set during <see cref="RunAsync"/> and cleared on disposal.
+    /// </summary>
+    private System.Net.WebSockets.WebSocket? _clientSocket;
+
     public WebSocketChannelSession(WebSocketChannelOptions options)
         : this(options, CreateCodec(options)) { }
 
@@ -25,7 +31,34 @@ public sealed class WebSocketChannelSession : IDisposable
         _envelopeCodec = codec;
     }
 
-    public void Dispose() => _sendGate.Dispose();
+    public void Dispose()
+    {
+        _clientSocket = null;
+        _sendGate.Dispose();
+    }
+
+    /// <summary>
+    /// Send a raw payload to the client WebSocket through the serial
+    /// send gate with envelope encoding. This is used by the stream
+    /// dispatch service for out-of-band message delivery.
+    /// </summary>
+    public async ValueTask SendToClientAsync(
+        ReadOnlyMemory<byte> payload,
+        CancellationToken cancellationToken)
+    {
+        var socket = _clientSocket;
+        if (socket is null || socket.State != WebSocketState.Open)
+            return;
+
+        var encoded = _envelopeCodec.Encode(payload);
+        await _sendGate.SendAsync(
+            () => socket.SendAsync(
+                encoded,
+                WebSocketMessageType.Text,
+                endOfMessage: true,
+                CancellationToken.None),
+            cancellationToken);
+    }
 
     /// <summary>
     /// Run the bidirectional relay between <paramref name="clientSocket"/>
@@ -37,6 +70,7 @@ public sealed class WebSocketChannelSession : IDisposable
         IWebSocketUpstreamDuplex upstream,
         CancellationToken cancellationToken)
     {
+        _clientSocket = clientSocket;
         async Task ClientToUpstream()
         {
             try

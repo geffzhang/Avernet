@@ -22,4 +22,8 @@
     <ProjectReference Include="..\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Ocb.Grains.Tests" />
+  </ItemGroup>
+
 </Project>

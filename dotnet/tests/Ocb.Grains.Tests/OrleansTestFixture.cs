@@ -52,6 +52,10 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
 {
     public void Configure(ISiloBuilder siloBuilder)
     {
+        // Force-load Ocb.Grains so its [RegisterConverter] is discovered
+        // before Orleans validates serializers.
+        _ = typeof(CallerContextConverter).Assembly;
+
         siloBuilder
             .AddMemoryGrainStorage("orleans-storage")
             .AddMemoryGrainStorage("PubSubStore")

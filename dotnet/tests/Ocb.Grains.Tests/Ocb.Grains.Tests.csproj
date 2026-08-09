@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.Gateway\Ocb.Gateway.csproj" />
     <ProjectReference Include="..\..\src\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
     <ProjectReference Include="..\..\src\Ocb.Grains\Ocb.Grains.csproj" />
   </ItemGroup>

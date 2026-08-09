@@ -56,6 +56,24 @@
           "System.Memory.Data": "10.0.3"
         }
       },
+      "Microsoft.Orleans.Streaming": {
+        "type": "Direct",
+        "requested": "[10.2.2, )",
+        "resolved": "10.2.2",
+        "contentHash": "DTH+P/vcij/VKqXu+Cjt1ME0ULoyS/4mNq5/dsSDDx/0XrWMo3QTQK2ahAGBcs/4h+cIkE0GveLoA37FasQi5w==",
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Analyzers": "3.11.0",
+          "Microsoft.CodeAnalysis.Common": "5.0.0",
+          "Microsoft.CodeAnalysis.Workspaces.Common": "5.0.0",
+          "Microsoft.Extensions.DependencyModel": "10.0.5",
+          "Microsoft.Orleans.Analyzers": "10.2.2",
+          "Microsoft.Orleans.CodeGenerator": "10.2.2",
+          "Microsoft.Orleans.Runtime": "10.2.2",
+          "Newtonsoft.Json": "13.0.4",
+          "System.IO.Hashing": "10.0.3",
+          "System.Memory.Data": "10.0.3"
+        }
+      },
       "Npgsql": {
         "type": "Direct",
         "requested": "[9.0.3, )",
@@ -221,15 +239,26 @@
         "resolved": "10.0.3",
         "contentHash": "MaGhRfGunmrj/nHjtsi9XkhlYJ/ERGWrbA+BiSKNtGnAjc9XlG5EhAvak6VRcX5LYzPF6pBO8nJ613dTgzabig=="
       },
+      "ocb.channels": {
+        "type": "Project"
+      },
       "ocb.configuration": {
         "type": "Project"
       },
       "ocb.contracts": {
         "type": "Project"
       },
+      "ocb.graincontracts": {
+        "type": "Project",
+        "dependencies": {
+          "Microsoft.Orleans.Sdk": "[10.2.2, )",
+          "Ocb.Contracts": "[1.0.0, )"
+        }
+      },
       "ocb.pluginapi": {
         "type": "Project",
         "dependencies": {
+          "Ocb.Channels": "[1.0.0, )",
           "Ocb.Contracts": "[1.0.0, )"
         }
       }
