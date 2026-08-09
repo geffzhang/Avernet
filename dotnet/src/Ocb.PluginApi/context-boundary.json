@@ -1,6 +1,6 @@
 {
   "purpose": "定义 OCB 核心调用基础设施实现时使用的 Plugin API。",
-  "provides": ["IPluginContract", "IPrincipalTokenVerifier", "IAccessKeyResolver", "ISecretResolver", "ICacheProvider", "AccessKeyResult"],
+  "provides": ["IPluginContract", "IPrincipalTokenVerifier", "IAccessKeyResolver", "ISecretResolver", "ICacheProvider", "ISchemaCatalog", "AccessKeyResult"],
   "consumes": ["CallerContext"],
   "internal_dependencies": ["Ocb.Contracts"],
   "change_impact": "接口变化要求所有 Provider 与对应 conformance suite 同步更新。"

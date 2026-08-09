@@ -1,6 +1,6 @@
 {
   "purpose": "协议接入、身份校验与转发编排。不拥有业务授权策略、进程生命周期或权威业务数据。",
-  "provides": ["GatewayBootstrap", "GatewayOptions", "GatewayReadinessCheck", "OrleansClientConfiguration"],
+  "provides": ["GatewayBootstrap", "GatewayOptions", "GatewayReadinessCheck", "OrleansClientConfiguration", "DomainMap", "DomainRoute", "PathRewriteRule", "GatewayRoutingConfig", "ServedOpenApiBuilder", "ForwardTargetResolver"],
   "consumes": ["CallerContext", "OcbPlatformOptions", "IPluginContract"],
   "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi", "Ocb.Configuration"],
   "change_impact": "网关组合根变化会影响所有进入集群的外部流量鉴权与路由决策。"
