@@ -1,0 +1,7 @@
+{
+  "purpose": "SM4 encryption provider — implements SM4-CBC + PKCS7 + Encrypt-then-MAC (HMAC-SHA256).",
+  "provides": ["Sm4CryptoProvider : ISm4CryptoProvider"],
+  "consumes": ["Ocb.PluginApi.Baas.Crypto.ISm4CryptoProvider", "Ocb.PluginApi.Baas.Crypto.ISm4KeyResolver"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Changes to encryption contract propagate to all device header encryption consumers."
+}
