@@ -1,14 +1,17 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Ocb.Baas/Ocb.Baas.csproj" />
     <Project Path="src/Ocb.Channels/Ocb.Channels.csproj" />
     <Project Path="src/Ocb.Configuration/Ocb.Configuration.csproj" />
     <Project Path="src/Ocb.Contracts/Ocb.Contracts.csproj" />
     <Project Path="src/Ocb.Core/Ocb.Core.csproj" />
     <Project Path="src/Ocb.Gateway/Ocb.Gateway.csproj" />
+    <Project Path="src/Ocb.Infrastructure.PostgreSql/Ocb.Infrastructure.PostgreSql.csproj" />
     <Project Path="src/Ocb.PluginApi/Ocb.PluginApi.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj" />
+    <Project Path="tests/Ocb.Baas.Contracts.Tests/Ocb.Baas.Contracts.Tests.csproj" />
     <Project Path="tests/Ocb.Channels.Tests/Ocb.Channels.Tests.csproj" />
     <Project Path="tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj" />
     <Project Path="tests/Ocb.Gateway.Tests/Ocb.Gateway.Tests.csproj" />

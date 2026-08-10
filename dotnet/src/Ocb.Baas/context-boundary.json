@@ -1,0 +1,7 @@
+{
+  "purpose": "BaaS domain orchestration — tenant, template, device, health, publish, QPM, SSE, invoke-http services.",
+  "provides": ["BaaS Core services implementing ITokenServiceContract, IDeviceServiceContract, ITemplateServiceContract, ITenantServiceContract, IQpmServiceContract, IPublishServiceContract, IHealthServiceContract, ISseServiceContract"],
+  "consumes": ["Ocb.Contracts/Baas/*", "Ocb.PluginApi/Baas/*"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Service contract changes propagate to Gateway, Runtime Worker, and external consumers."
+}
