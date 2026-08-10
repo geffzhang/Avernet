@@ -582,6 +582,14 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
+      "ocb.backend": {
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )",
+          "Ocb.GrainContracts": "[1.0.0, )",
+          "Ocb.PluginApi": "[1.0.0, )"
+        }
+      },
       "ocb.channels": {
         "type": "Project"
       },
