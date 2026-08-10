@@ -12,6 +12,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj" />
     <Project Path="tests/Ocb.Baas.Contracts.Tests/Ocb.Baas.Contracts.Tests.csproj" />
+    <Project Path="tests/Ocb.Baas.Core.Tests/Ocb.Baas.Core.Tests.csproj" />
     <Project Path="tests/Ocb.Baas.Provider.Conformance.Tests/Ocb.Baas.Provider.Conformance.Tests.csproj" />
     <Project Path="tests/Ocb.Channels.Tests/Ocb.Channels.Tests.csproj" />
     <Project Path="tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj" />
