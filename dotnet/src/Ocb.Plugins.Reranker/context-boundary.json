@@ -1,0 +1,7 @@
+{
+  "purpose": "Default reranker plugin — reranks search results for improved relevance.",
+  "provides": ["DefaultRerankerPlugin"],
+  "consumes": ["Ocb.PluginApi/Contracts/Vector/IRerankerPlugin"],
+  "internal_dependencies": ["Ocb.PluginApi"],
+  "change_impact": "Reranker changes affect search result quality and ordering."
+}

@@ -1,0 +1,7 @@
+{
+  "purpose": "Default embedding plugin — generates vector embeddings from text inputs.",
+  "provides": ["DefaultEmbeddingPlugin"],
+  "consumes": ["Ocb.PluginApi/Contracts/Vector/IEmbeddingPlugin"],
+  "internal_dependencies": ["Ocb.PluginApi"],
+  "change_impact": "Embedding model changes affect all downstream vector search quality."
+}
