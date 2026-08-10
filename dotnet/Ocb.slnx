@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Ocb.Backend/Ocb.Backend.csproj" />
     <Project Path="src/Ocb.Baas/Ocb.Baas.csproj" />
     <Project Path="src/Ocb.Channels/Ocb.Channels.csproj" />
     <Project Path="src/Ocb.Configuration/Ocb.Configuration.csproj" />
@@ -20,6 +21,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ocb.Architecture.Tests/Ocb.Architecture.Tests.csproj" />
+    <Project Path="tests/Ocb.Backend.Tests/Ocb.Backend.Tests.csproj" />
     <Project Path="tests/Ocb.Baas.Contracts.Tests/Ocb.Baas.Contracts.Tests.csproj" />
     <Project Path="tests/Ocb.Baas.Core.Tests/Ocb.Baas.Core.Tests.csproj" />
     <Project Path="tests/Ocb.Baas.EndToEnd.Tests/Ocb.Baas.EndToEnd.Tests.csproj" />
