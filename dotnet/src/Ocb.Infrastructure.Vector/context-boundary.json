@@ -1,0 +1,7 @@
+{
+  "purpose": "Vector infrastructure — SonnetDB and Qdrant providers, shared conformance suite, and vector compatibility guards.",
+  "provides": ["SonnetDbVectorStore", "QdrantVectorStore", "VectorStoreConformanceSuite", "VectorCompatibilityGuard"],
+  "consumes": ["Ocb.PluginApi/Contracts/Vector/*"],
+  "internal_dependencies": ["Ocb.PluginApi", "Ocb.Contracts"],
+  "change_impact": "Provider changes affect vector storage semantics; conformance suite changes affect all providers."
+}

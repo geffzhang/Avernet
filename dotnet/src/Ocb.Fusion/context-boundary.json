@@ -1,0 +1,7 @@
+{
+  "purpose": "Fusion HTTP delivery adapter and application orchestration — routes for fuse, workers, profiles, health, with OpenAPI parity.",
+  "provides": ["Fusion HTTP routes, FusionService, WorkerProfileService, FusionCoordinator, OpenAPI parity validator"],
+  "consumes": ["Ocb.Contracts/Fusion/*", "Ocb.PluginApi/Contracts/Vector/*"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Route changes propagate to external API consumers and OpenAPI parity baseline."
+}
