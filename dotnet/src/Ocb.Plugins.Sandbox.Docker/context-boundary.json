@@ -1,0 +1,7 @@
+{
+  "purpose": "Docker sandbox provider — creates and manages container-based sandbox instances.",
+  "provides": ["DockerSandboxProvider : ISandboxProvider"],
+  "consumes": ["Ocb.PluginApi.Baas.Sandbox.ISandboxProvider"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Changes to ISandboxProvider propagate here; must pass sandbox conformance suite."
+}

@@ -1,0 +1,7 @@
+{
+  "purpose": "Kubernetes sandbox provider — creates and manages pod-based sandbox instances.",
+  "provides": ["K8sSandboxProvider : ISandboxProvider"],
+  "consumes": ["Ocb.PluginApi.Baas.Sandbox.ISandboxProvider"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Changes to ISandboxProvider propagate here; must pass sandbox conformance suite."
+}

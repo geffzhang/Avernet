@@ -26,6 +26,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ocb.PluginApi\Ocb.PluginApi.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.Plugins.Sandbox.Docker\Ocb.Plugins.Sandbox.Docker.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.Plugins.Sandbox.K8s\Ocb.Plugins.Sandbox.K8s.csproj" />
   </ItemGroup>
 
 </Project>
