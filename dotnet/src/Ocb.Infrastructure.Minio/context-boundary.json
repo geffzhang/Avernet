@@ -1,0 +1,7 @@
+{
+  "purpose": "MinIO object storage infrastructure — multipart upload, checksum verification, signed URLs, range reads, and temp-object compensation.",
+  "provides": ["MinioAssetObjectStoragePlugin", "ChecksumVerifier"],
+  "consumes": ["Ocb.PluginApi/Storage/*"],
+  "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
+  "change_impact": "Object storage implementation changes affect all asset upload/download flows and might require tenant bucket adjustments."
+}

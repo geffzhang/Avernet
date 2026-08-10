@@ -30,6 +30,7 @@
     <PackageVersion Include="Microsoft.Orleans.Reminders" Version="10.2.2" />
     <PackageVersion Include="Microsoft.Orleans.TestingHost" Version="10.2.2" />
     <PackageVersion Include="NBomber" Version="6.5.0" />
+    <PackageVersion Include="Minio" Version="6.0.4" />
     <PackageVersion Include="Npgsql" Version="9.0.3" />
     <PackageVersion Include="Npgsql.OpenTelemetry" Version="9.0.3" />
   </ItemGroup>

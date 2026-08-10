@@ -10,6 +10,7 @@
     <Project Path="src/Ocb.Gateway/Ocb.Gateway.csproj" />
     <Project Path="src/Ocb.GrainContracts/Ocb.GrainContracts.csproj" />
     <Project Path="src/Ocb.Grains/Ocb.Grains.csproj" />
+    <Project Path="src/Ocb.Infrastructure.Minio/Ocb.Infrastructure.Minio.csproj" />
     <Project Path="src/Ocb.Infrastructure.Vector/Ocb.Infrastructure.Vector.csproj" />
     <Project Path="src/Ocb.Infrastructure.PostgreSql/Ocb.Infrastructure.PostgreSql.csproj" />
     <Project Path="src/Ocb.PluginApi/Ocb.PluginApi.csproj" />
