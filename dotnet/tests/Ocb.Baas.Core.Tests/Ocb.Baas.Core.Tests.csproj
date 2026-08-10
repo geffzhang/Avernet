@@ -26,6 +26,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Ocb.Baas\Ocb.Baas.csproj" />
     <ProjectReference Include="..\..\src\Ocb.Infrastructure.PostgreSql\Ocb.Infrastructure.PostgreSql.csproj" />
     <ProjectReference Include="..\..\src\Ocb.Contracts\Ocb.Contracts.csproj" />
   </ItemGroup>

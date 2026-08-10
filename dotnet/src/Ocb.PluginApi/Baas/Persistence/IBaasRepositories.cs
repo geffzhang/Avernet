@@ -74,6 +74,8 @@ public sealed record DeviceRecord(
     string TemplateUuid,
     string SandboxProfile,
     string Status,
+    string? SandboxId,
+    string? InternalEndpoint,
     DateTimeOffset CreatedAt,
     DateTimeOffset ExpiresAt,
     DateTimeOffset UpdatedAt);
