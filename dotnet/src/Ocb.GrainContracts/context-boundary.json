@@ -1,6 +1,6 @@
 {
   "purpose": "定义 Orleans Grain 契约、消息路由 DTO 与 Grain Key 工厂方法。不含实现。",
-  "provides": ["IConnectionDirectoryGrain", "ConnectionRoute", "OutboundGatewayMessage", "TenantGrainKey"],
+  "provides": ["IConnectionDirectoryGrain", "ConnectionRoute", "OutboundGatewayMessage", "TenantGrainKey", "IBotGrain", "IBotRuntimeGrain", "ISessionGrain", "IDeviceGrain"],
   "consumes": ["CallerContext"],
   "internal_dependencies": ["Ocb.Contracts"],
   "change_impact": "Grain 接口变化要求所有 Grain 实现、Gateway Client 与 Silo Host 同步更新。"
