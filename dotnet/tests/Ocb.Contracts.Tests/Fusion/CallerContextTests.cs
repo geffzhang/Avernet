@@ -56,7 +56,7 @@ public sealed class CallerContextTests
     public void CallerContext_UsesSnakeCaseJsonPropertyNames()
     {
         var ctx = new CallerContext("tenant-1", "subject-1", new HashSet<string> { "user" });
-        var json = System.Text.Json.JsonSerializer.Serialize(ctx, OcbJsonContext.Default.CallerContext);
+        var json = System.Text.Json.JsonSerializer.Serialize(ctx, OcbJsonContext.Default.CallerCtx);
 
         Assert.Contains("\"tenant_id\"", json);
         Assert.Contains("\"subject_id\"", json);

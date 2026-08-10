@@ -16,8 +16,8 @@ public sealed class CallerContextTests
     {
         var caller = new CallerContext("tenant-1", "user-7", new HashSet<string> { "admin", "operator" });
 
-        var json = JsonSerializer.Serialize(caller, OcbJsonContext.Default.CallerContext);
-        var roundTrip = JsonSerializer.Deserialize(json, OcbJsonContext.Default.CallerContext);
+        var json = JsonSerializer.Serialize(caller, OcbJsonContext.Default.CallerCtx);
+        var roundTrip = JsonSerializer.Deserialize(json, OcbJsonContext.Default.CallerCtx);
 
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
@@ -67,7 +67,7 @@ public sealed class CallerContextTests
     [InlineData("{\"tenant_id\":\" \",\"subject_id\":\"user-7\",\"roles\":[\"admin\"]}")]
     public void DeserializeRejectsMissingOrBlankTenantId(string json)
     {
-        var ex = Assert.ThrowsAny<Exception>(() => JsonSerializer.Deserialize(json, OcbJsonContext.Default.CallerContext));
+        var ex = Assert.ThrowsAny<Exception>(() => JsonSerializer.Deserialize(json, OcbJsonContext.Default.CallerCtx));
 
         Assert.True(ContainsException<ArgumentException>(ex) || ContainsException<JsonException>(ex));
     }
