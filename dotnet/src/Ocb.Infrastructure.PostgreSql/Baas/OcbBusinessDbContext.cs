@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Ocb.Infrastructure.PostgreSql.Baas.Entities;
+using Ocb.Infrastructure.PostgreSql.Assets;
 using Ocb.Infrastructure.PostgreSql.Identity;
 using Ocb.Infrastructure.PostgreSql.Skills;
 
@@ -22,9 +23,10 @@ public sealed class OcbBusinessDbContext : DbContext
     public DbSet<PublishEntity> Publishes => Set<PublishEntity>();
     public DbSet<BotRunQueueEntity> BotRunQueue => Set<BotRunQueueEntity>();
 
-    // Stage-5: Skills, Caller Identity
+    // Stage-5: Skills, Caller Identity, Assets
     public DbSet<SkillPublicationEntity> SkillPublications => Set<SkillPublicationEntity>();
     public DbSet<CallerIdentityEntity> CallerIdentities => Set<CallerIdentityEntity>();
+    public DbSet<TempAssetEntity> TempAssets => Set<TempAssetEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

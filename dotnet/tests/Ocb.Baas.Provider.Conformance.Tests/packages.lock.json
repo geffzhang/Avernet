@@ -111,6 +111,27 @@
           "Ocb.Channels": "[1.0.0, )",
           "Ocb.Contracts": "[1.0.0, )"
         }
+      },
+      "ocb.plugins.crypto.sm4": {
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )",
+          "Ocb.PluginApi": "[1.0.0, )"
+        }
+      },
+      "ocb.plugins.sandbox.docker": {
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )",
+          "Ocb.PluginApi": "[1.0.0, )"
+        }
+      },
+      "ocb.plugins.sandbox.k8s": {
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )",
+          "Ocb.PluginApi": "[1.0.0, )"
+        }
       }
     }
   }

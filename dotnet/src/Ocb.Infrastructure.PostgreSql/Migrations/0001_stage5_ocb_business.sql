@@ -42,3 +42,19 @@ CREATE TABLE IF NOT EXISTS ocb_business.caller_identities (
 
 CREATE INDEX IF NOT EXISTS ix_ci_tenant_bot
     ON ocb_business.caller_identities (tenant_id, bot_id);
+
+-- Temporary asset compensation table
+-- Records MinIO temp objects for later cleanup when persistence fails.
+CREATE TABLE IF NOT EXISTS ocb_business.temp_assets (
+    id              BIGSERIAL    PRIMARY KEY,
+    tenant_id       VARCHAR(64)  NOT NULL,
+    object_key      TEXT         NOT NULL,
+    state           VARCHAR(32)  NOT NULL DEFAULT 'TEMP_UPLOADED',
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    resolved_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS ix_ta_tenant_pending
+    ON ocb_business.temp_assets (tenant_id, resolved_at)
+    WHERE resolved_at IS NULL;

@@ -8,6 +8,12 @@
         "resolved": "6.0.4",
         "contentHash": "lkhqpF8Pu2Y7IiN7OntbsTtdbpR1syMsm2F3IgX6ootA4ffRqWL5jF7XipHuZQTdVuWG/gVAAcf8mjk8Tz0xPg=="
       },
+      "Microsoft.AspNetCore.TestHost": {
+        "type": "Direct",
+        "requested": "[10.0.10, )",
+        "resolved": "10.0.10",
+        "contentHash": "Kks+OpQlP/eWQhnTjkiv0H9kc9Uqa7ieAzNV62yJpZ8Ips/WwpfpwrwZUKzV83CBJaBl5OI7J2XxVVTC8vah/Q=="
+      },
       "Microsoft.NET.Test.Sdk": {
         "type": "Direct",
         "requested": "[17.14.1, )",
@@ -584,6 +590,13 @@
       },
       "ocb.contracts": {
         "type": "Project"
+      },
+      "ocb.fusion": {
+        "type": "Project",
+        "dependencies": {
+          "Ocb.Contracts": "[1.0.0, )",
+          "Ocb.GrainContracts": "[1.0.0, )"
+        }
       },
       "ocb.gateway": {
         "type": "Project",

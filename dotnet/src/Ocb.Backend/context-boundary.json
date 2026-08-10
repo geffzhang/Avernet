@@ -1,6 +1,6 @@
 {
   "purpose": "Backend Stage-5 application layer — manifest validation, publication state machine, skill activation orchestration, caller identity services, and HTTP delivery adapter.",
-  "provides": ["SkillsLayoutManifestValidator", "SkillActivationService", "SkillPublicationService", "BackendEndpointMappings"],
+  "provides": ["SkillsLayoutManifestValidator", "SkillActivationService", "SkillPublicationService", "BackendEndpointMappings", "IAssetCompensationRepository", "AssetCompensationService", "CompensationRecord"],
   "consumes": ["Ocb.Contracts/Skills/*", "Ocb.Contracts/Identity/*", "Ocb.Contracts/Resources/*", "Ocb.PluginApi/*"],
   "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi", "Ocb.GrainContracts"],
   "change_impact": "Manifest contract version enforcement is fail-closed — unknown versions are rejected by design."
