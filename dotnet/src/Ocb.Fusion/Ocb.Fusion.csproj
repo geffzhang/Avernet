@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Ocb.Contracts\Ocb.Contracts.csproj" />
+    <ProjectReference Include="..\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
   </ItemGroup>
 
 </Project>

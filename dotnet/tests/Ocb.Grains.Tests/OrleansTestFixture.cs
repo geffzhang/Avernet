@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using Ocb.Grains.Channels;
+using Ocb.GrainContracts.Fusion;
 using Orleans.Hosting;
 using Orleans.TestingHost;
 
@@ -46,7 +48,7 @@ public sealed class OrleansTestFixture : IAsyncDisposable
 }
 
 /// <summary>
-/// Configures the test silo with in-memory storage.
+/// Configures the test silo with in-memory storage and stub services.
 /// </summary>
 public sealed class TestSiloConfigurator : ISiloConfigurator
 {
@@ -59,6 +61,36 @@ public sealed class TestSiloConfigurator : ISiloConfigurator
         siloBuilder
             .AddMemoryGrainStorage("orleans-storage")
             .AddMemoryGrainStorage("PubSubStore")
-            .AddIncomingGrainCallFilter<TenantKeyGuardCallFilter>();
+            .AddIncomingGrainCallFilter<TenantKeyGuardCallFilter>()
+            .ConfigureServices(services =>
+            {
+                services.AddSingleton<IFusionCoordinator, StubFusionCoordinator>();
+            });
+    }
+}
+
+/// <summary>
+/// Stub coordinator for test scenarios. Returns a minimal fusion result.
+/// </summary>
+internal sealed class StubFusionCoordinator : IFusionCoordinator
+{
+    public Task<Ocb.Contracts.Fusion.FuseResponseDto> RunAsync(FusionCommand command, CancellationToken ct)
+    {
+        var participants = command.Request.Participants ?? Array.Empty<string>();
+        var result = new Ocb.Contracts.Fusion.FuseResponseDto(
+            GroupId: "default",
+            FusionId: $"fuse-{Guid.NewGuid():N}",
+            Question: command.Request.Question ?? string.Empty,
+            DriverBotId: command.Request.DriverBotId,
+            Perspectives: participants.Select(p => new Ocb.Contracts.Fusion.PerspectiveResponseDto(
+                WorkerId: p, ParticipantId: p, Response: $"P({p})", Confidence: 0.9f, Sources: null, LatencyMs: 10)).ToList(),
+            Recommendation: new Ocb.Contracts.Fusion.RecommendationResponseDto("rec", participants.Count, participants.Count, 0.95f),
+            PartialSuccess: false,
+            Warnings: Array.Empty<string>(),
+            Errors: Array.Empty<string>(),
+            Timing: new Ocb.Contracts.Fusion.TimingResponseDto(50, 10, 20, 5, 15),
+            FusionMode: command.Request.FusionMode ?? "agent"
+        );
+        return Task.FromResult(result);
     }
 }

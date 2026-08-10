@@ -11,4 +11,12 @@ public static class TenantGrainKey
     /// <param name="tenantId">The tenant identifier.</param>
     /// <returns>A grain key in the form <c>directory/{tenantId}</c>.</returns>
     public static string Directory(string tenantId) => $"directory/{tenantId}";
+
+    /// <summary>
+    /// Returns the grain key for a tenant's fusion job.
+    /// </summary>
+    /// <param name="tenantId">The tenant identifier.</param>
+    /// <param name="fusionJobId">The fusion job identifier.</param>
+    /// <returns>A grain key in the form <c>fusion-job/{tenantId}/{fusionJobId}</c>.</returns>
+    public static string FusionJob(string tenantId, string fusionJobId) => $"fusion-job/{tenantId}/{fusionJobId}";
 }
