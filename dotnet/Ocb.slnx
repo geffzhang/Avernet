@@ -23,5 +23,6 @@
     <Project Path="tests/Ocb.Channels.Tests/Ocb.Channels.Tests.csproj" />
     <Project Path="tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj" />
     <Project Path="tests/Ocb.Gateway.Tests/Ocb.Gateway.Tests.csproj" />
+    <Project Path="tests/Ocb.Infrastructure.Tests/Ocb.Infrastructure.Tests.csproj" />
   </Folder>
 </Solution>
