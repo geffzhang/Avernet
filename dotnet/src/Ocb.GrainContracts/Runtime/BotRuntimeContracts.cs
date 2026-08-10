@@ -23,6 +23,12 @@ public interface IBotRuntimeGrain : IGrainWithStringKey
     /// Read the current desired + observed snapshot.
     /// </summary>
     Task<BotRuntimeSnapshot> GetSnapshotAsync();
+
+    /// <summary>
+    /// Called when a worker's lease is lost (worker failure).
+    /// Triggers reassignment of the bot to a new worker.
+    /// </summary>
+    Task OnWorkerLeaseLostAsync(string workerId, string leaseToken);
 }
 
 /// <summary>
