@@ -1,7 +1,7 @@
 {
-  "purpose": "PostgreSQL infrastructure for ocfb_business schema — EF Core DbContext, entities, migrations, and repositories for BaaS domain.",
-  "provides": ["BaasDbContext", "EF Core entities for Tenant, Template, Device, Publish, BotRunQueue"],
-  "consumes": ["Ocb.PluginApi/Baas/Persistence/*"],
+  "purpose": "PostgreSQL infrastructure for ocb_business schema — EF Core DbContext, entities, migrations, and repositories for BaaS and Stage-5 domains.",
+  "provides": ["OcbBusinessDbContext", "EF Core entities for Tenant, Template, Device, Publish, BotRunQueue, SkillPublication, CallerIdentity", "SkillPublicationRepository", "CallerIdentityRepository"],
+  "consumes": ["Ocb.PluginApi/Baas/Persistence/*", "Ocb.PluginApi/Skills/*", "Ocb.PluginApi/Identity/*"],
   "internal_dependencies": ["Ocb.Contracts", "Ocb.PluginApi"],
   "change_impact": "Schema changes propagate to all BaaS services and database migration scripts."
 }

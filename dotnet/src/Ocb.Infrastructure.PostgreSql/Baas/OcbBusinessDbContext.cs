@@ -1,10 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Ocb.Infrastructure.PostgreSql.Baas.Entities;
+using Ocb.Infrastructure.PostgreSql.Identity;
+using Ocb.Infrastructure.PostgreSql.Skills;
 
 namespace Ocb.Infrastructure.PostgreSql.Baas;
 
 /// <summary>
-/// EF Core DbContext for the ocfb_business schema (BaaS domain).
+/// EF Core DbContext for the ocb_business schema (BaaS domain + Stage-5).
 /// </summary>
 public sealed class OcbBusinessDbContext : DbContext
 {
@@ -13,11 +15,16 @@ public sealed class OcbBusinessDbContext : DbContext
     {
     }
 
+    // BaaS domain
     public DbSet<TenantEntity> Tenants => Set<TenantEntity>();
     public DbSet<TemplateEntity> Templates => Set<TemplateEntity>();
     public DbSet<DeviceEntity> Devices => Set<DeviceEntity>();
     public DbSet<PublishEntity> Publishes => Set<PublishEntity>();
     public DbSet<BotRunQueueEntity> BotRunQueue => Set<BotRunQueueEntity>();
+
+    // Stage-5: Skills, Caller Identity
+    public DbSet<SkillPublicationEntity> SkillPublications => Set<SkillPublicationEntity>();
+    public DbSet<CallerIdentityEntity> CallerIdentities => Set<CallerIdentityEntity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -49,6 +56,21 @@ public sealed class OcbBusinessDbContext : DbContext
         {
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.Priority);
+        });
+
+        // Stage-5: skill_publications composite PK
+        modelBuilder.Entity<SkillPublicationEntity>(entity =>
+        {
+            entity.HasKey(e => new { e.TenantId, e.BotId, e.SkillId });
+            entity.HasIndex(e => new { e.TenantId, e.BotId });
+            entity.HasIndex(e => new { e.TenantId, e.PublicationState });
+        });
+
+        // Stage-5: caller_identities composite PK
+        modelBuilder.Entity<CallerIdentityEntity>(entity =>
+        {
+            entity.HasKey(e => new { e.TenantId, e.BotId, e.SubjectId });
+            entity.HasIndex(e => new { e.TenantId, e.BotId });
         });
     }
 }
