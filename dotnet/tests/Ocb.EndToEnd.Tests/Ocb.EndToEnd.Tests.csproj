@@ -12,6 +12,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
@@ -31,6 +32,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ocb.Gateway\Ocb.Gateway.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.Fusion\Ocb.Fusion.csproj" />
+    <ProjectReference Include="..\..\src\Ocb.GrainContracts\Ocb.GrainContracts.csproj" />
   </ItemGroup>
 
 </Project>

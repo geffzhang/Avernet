@@ -27,6 +27,7 @@
     <Project Path="tests/Ocb.Channels.Tests/Ocb.Channels.Tests.csproj" />
     <Project Path="tests/Ocb.Contracts.Tests/Ocb.Contracts.Tests.csproj" />
     <Project Path="tests/Ocb.Fusion.Tests/Ocb.Fusion.Tests.csproj" />
+    <Project Path="tests/Ocb.EndToEnd.Tests/Ocb.EndToEnd.Tests.csproj" />
     <Project Path="tests/Ocb.Gateway.Tests/Ocb.Gateway.Tests.csproj" />
     <Project Path="tests/Ocb.Grains.Tests/Ocb.Grains.Tests.csproj" />
     <Project Path="tests/Ocb.Infrastructure.Tests/Ocb.Infrastructure.Tests.csproj" />
